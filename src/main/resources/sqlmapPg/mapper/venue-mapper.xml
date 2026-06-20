@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sportsbooking.mainapi.jpa.myrepository.VenueMyRepository">
+
+    <resultMap id="VenueListItemDtoMap" type="com.sportsbooking.mainapi.dto.venue.VenueListItemDto">
+        <result property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="address" column="address"/>
+        <result property="latitude" column="latitude"/>
+        <result property="longitude" column="longitude"/>
+        <result property="ubigeo" column="ubigeo"/>
+        <result property="illuminated" column="illuminated"/>
+        <result property="minPrice" column="minPrice"/>
+        <result property="priceDay" column="priceDay"/>
+        <result property="priceNight" column="priceNight"/>
+        <result property="sports" column="sports" typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
+        <result property="surfaces" column="surfaces" typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
+        <result property="avgRating" column="avgRating"/>
+        <result property="reviewCount" column="reviewCount"/>
+        <result property="photoUrl" column="photoUrl"/>
+    </resultMap>
+
+    <!--
+        Busca venues activos dentro de un radio (metros) desde un punto dado.
+        Usa ST_DWithin de PostGIS sobre la columna GEOGRAPHY.
+        Retorna resumen con rating promedio y primera foto.
+    -->
+    <select id="findInBounds" resultMap="VenueListItemDtoMap">
+        SELECT
+            v.id,
+            v.name,
+            v.address,
+            ST_Y(v.location::geometry)       AS latitude,
+            ST_X(v.location::geometry)       AS longitude,
+            CONCAT(tbl_u.distrito, ', ', tbl_u.provincia, ', ', tbl_u.departamento) AS ubigeo,
+            v.is_illuminated                 AS illuminated,
+            v.id_sports                      AS sports,
+            v.id_surfaces                    AS surfaces,
+            COALESCE(r.avg_points, 0)        AS avgRating,
+            COALESCE(r.review_count, 0)      AS reviewCount,
+            p.url                            AS photoUrl,
+            v.max_capacity                   AS maxCapacity,
+            v.base_price                     AS basePrice,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice
+        FROM venues v
+        LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
+        LEFT JOIN LATERAL (
+            SELECT
+                AVG(vr.points)   AS avg_points,
+                COUNT(vr.id)     AS review_count
+            FROM venue_reviews vr
+            WHERE vr.venue_id = v.id
+        ) r ON true
+        LEFT JOIN LATERAL (
+            SELECT vp.id::text AS url
+            FROM venue_photos vp
+            WHERE vp.venue_id = v.id
+            ORDER BY vp.created_at ASC
+            LIMIT 1
+        ) p ON true
+        WHERE v.status = 1
+        <if test="sportId != null">
+            AND #{sportId} = ANY(v.id_sports)
+        </if>
+        <if test="venueName != null and venueName != ''">
+            AND v.name ILIKE '%' || #{venueName} || '%'
+        </if>
+        <if test="surfaceId != null">
+            AND #{surfaceId} = ANY(v.id_surfaces)
+        </if>
+        <if test="hasLighting != null">
+            AND v.is_illuminated = #{hasLighting}
+        </if>
+        <if test="minPrice != null or maxPrice != null">
+            AND EXISTS (
+                SELECT 1 FROM available_venues av 
+                WHERE av.venue_id = v.id 
+                AND av.status = 1
+                <if test="minPrice != null">
+                    AND av.price &gt;= #{minPrice}
+                </if>
+                <if test="maxPrice != null">
+                    AND av.price &lt;= #{maxPrice}
+                </if>
+            )
+        </if>
+          AND ST_DWithin(
+                v.location,
+                ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography,
+                #{radiusMeters}
+              )
+        ORDER BY ST_Distance(
+            v.location,
+            ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography
+        ) ASC
+    </select>
+
+    <!--
+        Búsqueda avanzada con filtros opcionales.
+        Usa dynamic SQL con <if> para aplicar solo los filtros presentes.
+    -->
+    <select id="searchVenues" resultMap="VenueListItemDtoMap">
+        SELECT
+            v.id,
+            v.name,
+            v.address,
+            ST_Y(v.location::geometry)       AS latitude,
+            ST_X(v.location::geometry)       AS longitude,
+            CONCAT(tbl_u.distrito, ', ', tbl_u.provincia, ', ', tbl_u.departamento) AS ubigeo,
+            v.is_illuminated                 AS illuminated,
+            v.id_sports                      AS sports,
+            v.id_surfaces                    AS surfaces,
+            COALESCE(r.avg_points, 0)        AS avgRating,
+            COALESCE(r.review_count, 0)      AS reviewCount,
+            p.url                            AS photoUrl,
+            v.max_capacity                   AS maxCapacity,
+            v.base_price                     AS basePrice,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice
+        FROM venues v
+        LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
+        LEFT JOIN LATERAL (
+            SELECT
+                AVG(vr.points)   AS avg_points,
+                COUNT(vr.id)     AS review_count
+            FROM venue_reviews vr
+            WHERE vr.venue_id = v.id
+        ) r ON true
+        LEFT JOIN LATERAL (
+            SELECT vp.id::text AS url
+            FROM venue_photos vp
+            WHERE vp.venue_id = v.id
+            ORDER BY vp.created_at ASC
+            LIMIT 1
+        ) p ON true
+        WHERE v.status = 1
+        <if test="sportId != null">
+            AND #{sportId} = ANY(v.id_sports)
+        </if>
+        <if test="surfaceIds != null and surfaceIds.length > 0">
+            AND v.id_surfaces &amp;&amp; ARRAY[
+                <foreach collection="surfaceIds" item="sid" separator=",">
+                    #{sid}
+                </foreach>
+            ]::integer[]
+        </if>
+        <if test="isIlluminated != null">
+            AND v.is_illuminated = #{isIlluminated}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (v.name ILIKE CONCAT('%', #{keyword}, '%')
+                 OR v.address ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="lat != null and lng != null and radiusMeters != null">
+            AND ST_DWithin(
+                v.location,
+                ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography,
+                #{radiusMeters}
+            )
+        </if>
+        ORDER BY
+        <choose>
+            <when test="lat != null and lng != null">
+                ST_Distance(
+                    v.location,
+                    ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography
+                ) ASC
+            </when>
+            <otherwise>
+                v.created_at DESC
+            </otherwise>
+        </choose>
+    </select>
+    <!--
+        Retorna todos los venues activos de un host con resumen de rating y precios.
+    -->
+    <select id="findByHostUserId" resultMap="VenueListItemDtoMap">
+        SELECT
+            v.id,
+            v.name,
+            v.address,
+            ST_Y(v.location::geometry)       AS latitude,
+            ST_X(v.location::geometry)       AS longitude,
+            CONCAT(tbl_u.distrito, ', ', tbl_u.provincia, ', ', tbl_u.departamento) AS ubigeo,
+            v.dimensions AS dimensions,
+            v.is_illuminated                 AS illuminated,
+            v.id_sports                      AS sports,
+            v.id_surfaces                    AS surfaces,
+            COALESCE(r.avg_points, 0)        AS avgRating,
+            COALESCE(r.review_count, 0)      AS reviewCount,
+            p.url                            AS photoUrl,
+            v.max_capacity                   AS maxCapacity,
+            v.base_price                     AS basePrice,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1 AND av.schedule_type = 1) AS priceDay,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1 AND av.schedule_type = 2) AS priceNight
+        FROM venues v
+        LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
+        LEFT JOIN LATERAL (
+            SELECT
+                AVG(vr.points)   AS avg_points,
+                COUNT(vr.id)     AS review_count
+            FROM venue_reviews vr
+            WHERE vr.venue_id = v.id
+        ) r ON true
+        LEFT JOIN LATERAL (
+            SELECT vp.id::text AS url
+            FROM venue_photos vp
+            WHERE vp.venue_id = v.id
+            ORDER BY vp.created_at ASC
+            LIMIT 1
+        ) p ON true
+        WHERE v.status = 1
+          AND v.host_user_id = #{hostUserId}
+        ORDER BY v.created_at DESC
+    </select>
+
+</mapper>
+

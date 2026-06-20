@@ -1,0 +1,179 @@
+server:
+  forward-headers-strategy: native
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+    min-response-size: 1024
+  servlet:
+    context-path: /
+
+logging:
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([${springAppName:-},%X{X-B3-TraceId:-},%X{X-B3-SpanId:-},%X{X-Span-Export:-}]){yellow} %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
+  level:
+    # org.springframework: WARN
+    # org.hibernate: WARN
+    # io.jsonwebtoken: WARN
+    # org.hibernate.engine.jdbc.spi.SqlExceptionHelper: ERROR
+    # com.sportsbooking.mainapi: INFO
+
+    org.springframework: INFO
+    org.springframework.security: DEBUG
+    org.hibernate: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql: TRACE
+    io.jsonwebtoken: DEBUG
+    com.sportsbooking.mainapi: DEBUG
+
+spring:
+  
+  application:
+    name: sportsbooking-mainapi
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  threads:
+    virtual:
+      enabled: true
+  jackson:
+    deserialization:
+      FAIL_ON_IGNORED_PROPERTIES: false
+    serialization:
+      INDENT_OUTPUT: false
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 25MB
+      max-request-size: 25MB
+  config:
+    import: optional:file:.env[.properties]
+
+  # ------------------------------------
+  # Conexion de Base de Datos
+  # ------------------------------------
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_DATABASE}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    hikari:
+      pool-name: sportfield-pool
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 60000
+      max-lifetime: 1200000
+      connection-timeout: 60000
+  jpa:
+    database: POSTGRESQL
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 1000
+          order_inserts: true
+          order_updates: true
+          lob:
+            non_contextual_creation: true
+    show-sql: false
+
+  # ------------------------------------
+  # Configuracion de Redis
+  # ------------------------------------
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      timeout: 5000ms
+# ------------------------------------
+# Configuracion de JWT
+# ------------------------------------
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+   # secret: mi_super_secret_jwt_2026_ultra_seguro_123456
+    access-token-expiration: 1800000      # 30 minutos en ms
+    refresh-token-expiration: 604800000  # 7 dias en ms
+  # ------------------------------------
+  # Configuracion de Redis (prefijo de keys)
+  # ------------------------------------
+  redis:
+    key-prefix: ${REDIS_KEY_PREFIX:sportsbooking:}
+    clear-on-startup: ${REDIS_CLEAR_ON_STARTUP:true} # Mantenlo en false por defecto para prod, overridden en application-local.yml
+  # ------------------------------------
+  # Configuracion de OTP
+  # ------------------------------------
+  otp:
+    expiration-minutes: ${OTP_EXPIRATION_MINUTES:10}  # Duración del código OTP (registro + recovery)
+    cooldown-minutes: ${OTP_COOLDOWN_MINUTES:1}     # Tiempo mínimo entre reenvíos
+    max-requests: ${OTP_MAX_REQUESTS:3}             # Máximo de solicitudes OTP por ventana
+    max-requests-window-hours: ${OTP_MAX_REQUESTS_WINDOW_HOURS:4}  # Ventana de rate-limit en horas
+  # ------------------------------------
+  # Configuracion de Reservas
+  # ------------------------------------
+  booking:
+    hold-ttl-minutes: ${BOOKING_HOLD_TTL_MINUTES:10}                  # Tiempo base para reserva temporal
+    hold-ttl-buffer-seconds: ${BOOKING_HOLD_TTL_BUFFER_SECONDS:30}    # Tiempo buffer extra (oculto)
+    random-code-length: ${BOOKING_RANDOM_CODE_LENGTH:5}                # N caracteres alfanumericos aleatorios
+    slot-buffer-minutes: ${BOOKING_SLOT_BUFFER_MINUTES:30}             # Minutos preventivos de anticipacion. Horarios menores a este gap despues de la hora actual no se listaran.
+  # ------------------------------------
+  # Configuración de Schedulers
+  # ------------------------------------
+  scheduler:
+    booking:
+      enabled: ${SCHEDULER_BOOKING_ENABLED:true}
+      interval: ${SCHEDULER_BOOKING_INTERVAL:60}
+    push:
+      enabled: ${SCHEDULER_PUSH_ENABLED:true}
+      interval: ${SCHEDULER_PUSH_INTERVAL:60}
+      host-reminder-minutes: ${SCHEDULER_PUSH_HOST_REMINDER_MINUTES:120}
+      host-autoconfirm-minutes: ${SCHEDULER_PUSH_HOST_AUTOCONFIRM_MINUTES:60}
+      client-reminder-minutes: ${SCHEDULER_PUSH_CLIENT_REMINDER_MINUTES:60}
+  # ------------------------------------
+  # Configuración de Venues
+  # ------------------------------------
+  # venue:
+  #   max-search-radius-km: ${VENUE_MAX_SEARCH_RADIUS_KM:50}  # Radio máximo de búsqueda PostGIS en km
+  #   images:
+  #     # base-path: ${VENUE_IMAGES_PATH:./uploads/venues}       # Carpeta base en disco para fotos
+  #     base-path: C:/uploads/venues
+  #     max-size-mb: ${VENUE_MAX_IMAGE_SIZE_MB:5}               # Tamaño máximo por archivo (MB)
+  #     max-count: ${VENUE_MAX_IMAGE_COUNT:5}                   # Máximo de fotos por venue
+    venue:
+    max-search-radius-km: ${VENUE_MAX_SEARCH_RADIUS_KM:50}  # Radio máximo de búsqueda PostGIS en km
+    images:
+      # base-path: ${VENUE_IMAGES_PATH:./uploads/venues}       # Carpeta base en disco para fotos
+      base-path: ${VENUE_IMAGES_PATH}
+      max-size-mb: ${VENUE_MAX_IMAGE_SIZE_MB:5}               # Tamaño máximo por archivo (MB)
+      max-count: ${VENUE_MAX_IMAGE_COUNT:5}                   # Máximo de fotos por venue
+
+# ------------------------------------
+# Configuración de MyBatis
+# ------------------------------------
+mybatis:
+  config-location: classpath:sqlmapPg/mybatis-config.xml
+  mapper-locations: classpath:sqlmapPg/mapper/*.xml
+
+# ------------------------------------
+# Clientes HTTP externos
+# ------------------------------------
+feign-clients:
+  email-api:
+    base-url: ${EMAIL_API_URL}
+
+# ------------------------------------
+# Configuracion de API Docs (Swagger)
+# ------------------------------------
+springdoc:
+  api-docs.enabled: false
+  swagger-ui.enabled: false
+  swagger-ui.path: /swagger-ui.html
+
+# ------------------------------------
+# Firebase Admin SDK (FCM)
+# ------------------------------------
+firebase:
+  service-account-path: firebase-service-account.json 

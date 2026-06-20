@@ -1,0 +1,36 @@
+# ── Git ──
+.git/
+
+# ── Gradle ──
+.gradle/
+build/
+bin/
+
+# ── IDE ──
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── Docker ──
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# ── Docs ──
+*.md
+LICENSE
+
+# ── secrets ──
+
+.env

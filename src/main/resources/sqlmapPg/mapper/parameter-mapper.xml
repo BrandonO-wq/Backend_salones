@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sportsbooking.mainapi.jpa.myrepository.ParameterMyRepository">
+
+    <!--
+        Retorna todos los parámetros hijos de un parent dado.
+        Ejemplo: idParamParent=1 → deportes, idParamParent=4 → bancos.
+    -->
+    <select id="getChildrenByParent" resultType="ParameterDto">
+        SELECT id_param        AS idParam,
+               id_param_parent AS idParamParent,
+               id_param_child  AS idParamChild,
+               parent_name     AS parentName,
+               child_name      AS childName,
+               description,
+               icon,
+               icon_type       AS iconType,
+               row_order       AS rowOrder,
+               status,
+               value
+        FROM parameter
+        WHERE id_param_parent = #{idParamParent}
+        ORDER BY child_name ASC
+    </select>
+
+    <!--
+        Retorna la descripción de un parámetro por su ID.
+    -->
+    <select id="getDescriptionById" resultType="String">
+        SELECT description
+        FROM parameter
+        WHERE id_param = #{idParam}
+    </select>
+
+</mapper>

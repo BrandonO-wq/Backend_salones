@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN" "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <settings>
+        <setting name="cacheEnabled" value="false"/>
+        <setting name="useGeneratedKeys" value="true"/>
+        <setting name="defaultExecutorType" value="REUSE"/>
+        <setting name="aggressiveLazyLoading" value="false"/>
+        <setting name="lazyLoadingEnabled" value="false"/>
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+    </settings>
+
+    <typeAliases>
+        <!-- Venue module -->
+        <typeAlias type="com.sportsbooking.mainapi.dto.venue.VenueListItemDto" alias="VenueListItemDto"/>
+
+        <!-- Parameter module -->
+        <typeAlias type="com.sportsbooking.mainapi.dto.parameter.ParameterDto" alias="ParameterDto"/>
+    </typeAliases>
+
+    <typeHandlers>
+        <typeHandler handler="com.sportsbooking.mainapi.config.mybatis.UUIDTypeHandler"/>
+    </typeHandlers>
+</configuration>
