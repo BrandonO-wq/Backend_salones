@@ -34,4 +34,16 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID> {
     List<BookingEntity> findBookingsByHostUserId(@Param("hostUserId") UUID hostUserId);
 
     List<BookingEntity> findByStatus(int status);
+
+    @Query("SELECT b FROM BookingEntity b WHERE b.status = :status AND b.bookingDate BETWEEN :startDate AND :endDate")
+    List<BookingEntity> findByStatusAndBookingDateBetween(
+            @Param("status") int status,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT b FROM BookingEntity b WHERE b.status = :status AND CAST(b.createdAt AS date) BETWEEN :startDate AND :endDate")
+    List<BookingEntity> findByStatusAndCreatedAtDateBetween(
+            @Param("status") int status,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 }

@@ -20,17 +20,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Filtro de seguridad que valida el token JWT en cada request.
  *
- * <p>Se ejecuta una vez por request ({@link OncePerRequestFilter}) y realiza:
+ * <p>
+ * Se ejecuta una vez por request ({@link OncePerRequestFilter}) y realiza:
  * <ol>
- *   <li>Extracción del token del header {@code Authorization: Bearer <token>}.</li>
- *   <li>Verificación de que el token no esté en la ban list de Redis.</li>
- *   <li>Validación de la firma y expiración del token.</li>
- *   <li>Establecimiento del contexto de seguridad con el usuario autenticado.</li>
+ * <li>Extracción del token del header
+ * {@code Authorization: Bearer <token>}.</li>
+ * <li>Verificación de que el token no esté en la ban list de Redis.</li>
+ * <li>Validación de la firma y expiración del token.</li>
+ * <li>Establecimiento del contexto de seguridad con el usuario
+ * autenticado.</li>
  * </ol>
  */
 @Slf4j
@@ -39,16 +42,19 @@ import java.util.stream.Collectors;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String AUTH_HEADER   = "Authorization";
+    private static final String AUTH_HEADER = "Authorization";
 
-    private final JwtProviderComponent  jwtProvider;
+    private final JwtProviderComponent jwtProvider;
     private final TokenBanListComponent tokenBanListService;
 
     /**
      * Ejecuta la validación del JWT para cada request entrante.
      *
-     * <p>Si el token es válido y no está baneado, establece el {@link SecurityContextHolder}
-     * con los datos del usuario, permitiendo que Spring Security autorice el acceso.
+     * <p>
+     * Si el token es válido y no está baneado, establece el
+     * {@link SecurityContextHolder}
+     * con los datos del usuario, permitiendo que Spring Security autorice el
+     * acceso.
      *
      * @param request     request HTTP entrante.
      * @param response    response HTTP saliente.
@@ -58,8 +64,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain
-    ) throws ServletException, IOException {
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String token = extractToken(request);
 
@@ -71,7 +76,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Procesa el token: verifica ban list, valida firma y establece el SecurityContext.
+     * Procesa el token: verifica ban list, valida firma y establece el
+     * SecurityContext.
      *
      * @param token   token JWT extraído del header.
      * @param request request HTTP actual.
@@ -94,13 +100,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         UUID userId = jwtProvider.getUserIdFromToken(token);
         List<String> roles = jwtProvider.getRolesFromToken(token);
 
-        List<SimpleGrantedAuthority> authorities = roles.stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                .collect(Collectors.toList());
+        List<SimpleGrantedAuthority> authorities = Stream.concat(
+                roles.stream().map(role -> new SimpleGrantedAuthority(role)),
+                roles.stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role)))
+                .toList();
 
-        // Se usa el userId como principal para poder recuperarlo fácilmente en los controllers
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(userId, null, authorities);
+        // Se usa el userId como principal para poder recuperarlo fácilmente en los
+        // controllers
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userId, null,
+                authorities);
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -111,7 +119,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      * Extrae el token JWT del header {@code Authorization}.
      *
      * @param request request HTTP.
-     * @return el token JWT sin el prefijo "Bearer ", o {@code null} si no está presente.
+     * @return el token JWT sin el prefijo "Bearer ", o {@code null} si no está
+     *         presente.
      */
     private String extractToken(HttpServletRequest request) {
         String header = request.getHeader(AUTH_HEADER);
