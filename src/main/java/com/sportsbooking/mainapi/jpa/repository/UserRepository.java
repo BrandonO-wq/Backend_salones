@@ -2,7 +2,9 @@ package com.sportsbooking.mainapi.jpa.repository;
 
 import com.sportsbooking.mainapi.jpa.entity.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,4 +58,7 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
      * @return {@link Optional} con el usuario si existe, vacío si no.
      */
     Optional<UserEntity> findByFbToken(String fbToken);
+
+    @Query("SELECT u FROM UserEntity u WHERE u.id IN (SELECT DISTINCT v.hostUserId FROM VenueEntity v) ORDER BY u.createdAt DESC")
+    List<UserEntity> findHosts();
 }

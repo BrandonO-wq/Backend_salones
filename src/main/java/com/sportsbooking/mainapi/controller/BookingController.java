@@ -156,12 +156,18 @@ public class BookingController {
 
     @GetMapping("/host/summary")
     @PreAuthorize("hasRole('ROLE_CLIENT')")
-    @Operation(summary = "Obtener resumen de reservas del anfitrión (costos, tipo, rating, horarios)")
-    public ResponseEntity<List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse>> getHostBookingSummaries(
-            @AuthenticationPrincipal UUID userId) {
+    @Operation(summary = "Obtener resumen de reservas de todos los anfitriones, incluyendo los dueños de los salones")
+    public ResponseEntity<List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse>> getHostBookingSummaries() {
         List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse> responses = bookingService
-                .getHostBookingSummaries(userId);
+                .getAllHostBookingSummaries();
         return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/admin/summary")
+    @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
+    @Operation(summary = "Obtener resumen de todas las reservas de todos los usuarios (para administrador)")
+    public ResponseEntity<List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse>> getAdminBookingSummaries() {
+        return ResponseEntity.ok(bookingService.getAllHostBookingSummaries());
     }
 
     @GetMapping("/host/pending-count")

@@ -10,6 +10,8 @@ public record HostBookingSummaryResponse(
                 UUID bookingId,
                 UUID venueId,
                 String venueName,
+                UUID hostId,
+                String hostName,
                 LocalDate bookingDate,
                 OffsetDateTime createdAt,
                 BigDecimal totalAmount,

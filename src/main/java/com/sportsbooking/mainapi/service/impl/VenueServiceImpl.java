@@ -8,6 +8,8 @@ import com.sportsbooking.mainapi.dto.venue.request.CreateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.request.InBoundsRequest;
 import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
+import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import com.sportsbooking.mainapi.enums.ScheduleStatus;
 import com.sportsbooking.mainapi.enums.ScheduleType;
@@ -35,8 +37,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import com.sportsbooking.mainapi.enums.AppDayOfWeek;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -65,6 +71,9 @@ public class VenueServiceImpl implements VenueService {
     private final VenueProperties venueProperties;
     private final FileStorageService fileStorageService;
     private final UbigeoService ubigeoService;
+    private final UserRepository userRepository;
+    private final BookingRepository bookingRepository;
+    private final HostDebtsRepository hostDebtsRepository;
 
     /** Factory para crear geometrías JTS con SRID 4326 (WGS84). */
     private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
@@ -724,5 +733,96 @@ public class VenueServiceImpl implements VenueService {
     @Transactional(readOnly = true)
     public List<VenueListItemDto> getMyVenues(UUID userId) {
         return venueMyRepository.findByHostUserId(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VenueBookingReportDto> getVenuesBookingReport() {
+        log.info("[Venue] Generando reporte de reservas y dueños para todos los venues");
+        List<VenueEntity> venues = venueRepository.findAll();
+        if (venues.isEmpty()) {
+            return List.of();
+        }
+
+        List<UserEntity> users = userRepository.findAll();
+        Map<UUID, String> ownerNames = users.stream()
+                .filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(UserEntity::getId, UserEntity::getName, (a, b) -> a));
+
+        List<BookingEntity> allBookings = bookingRepository.findAll();
+        Map<UUID, Long> totalBookingsCount = allBookings.stream()
+                .filter(b -> b.getVenueId() != null)
+                .collect(Collectors.groupingBy(BookingEntity::getVenueId, Collectors.counting()));
+
+        OffsetDateTime oneMonthAgo = OffsetDateTime.now(ZoneOffset.UTC).minusMonths(1);
+        Map<UUID, Long> lastMonthBookingsCount = allBookings.stream()
+                .filter(b -> b.getVenueId() != null && b.getCreatedAt() != null && b.getCreatedAt().isAfter(oneMonthAgo))
+                .collect(Collectors.groupingBy(BookingEntity::getVenueId, Collectors.counting()));
+
+        List<VenueReviewEntity> allReviews = reviewRepository.findAll();
+        Map<UUID, List<VenueReviewEntity>> reviewsByVenue = allReviews.stream()
+                .filter(r -> r.getVenueId() != null)
+                .collect(Collectors.groupingBy(VenueReviewEntity::getVenueId));
+
+        List<HostDebts> allDebts = hostDebtsRepository.findAll();
+        Map<UUID, List<HostDebts>> debtsByVenue = allDebts.stream()
+                .filter(d -> d.getVenueId() != null)
+                .collect(Collectors.groupingBy(HostDebts::getVenueId));
+
+        return venues.stream()
+                .map(venue -> {
+                    UUID venueId = venue.getId();
+                    String ownerName = ownerNames.getOrDefault(venue.getHostUserId(), "Desconocido");
+                    long bookingsCount = totalBookingsCount.getOrDefault(venueId, 0L);
+                    long bookingsLastMonthCount = lastMonthBookingsCount.getOrDefault(venueId, 0L);
+
+                    List<VenueReviewEntity> venueReviews = reviewsByVenue.getOrDefault(venueId, List.of());
+                    long reviewsCount = venueReviews.size();
+                    double reviewsAverage = reviewsCount > 0 ? venueReviews.stream()
+                            .mapToInt(VenueReviewEntity::getPoints)
+                            .average()
+                            .orElse(0.0) : 0.0;
+
+                    List<HostDebts> venueDebts = debtsByVenue.getOrDefault(venueId, List.of());
+                    BigDecimal incomeLastPeriod = BigDecimal.ZERO;
+                    BigDecimal commissionLastPeriod = BigDecimal.ZERO;
+
+                    if (!venueDebts.isEmpty()) {
+                        HostDebts latestDebt = venueDebts.stream()
+                                .max((a, b) -> a.getCycleEnd().compareTo(b.getCycleEnd()))
+                                .orElse(null);
+                        if (latestDebt != null) {
+                            incomeLastPeriod = latestDebt.getTotalIncome() != null ? latestDebt.getTotalIncome() : BigDecimal.ZERO;
+                            commissionLastPeriod = latestDebt.getCommissionAmount() != null ? latestDebt.getCommissionAmount() : BigDecimal.ZERO;
+                        }
+                    }
+
+                    Double latitude = venue.getLocation() != null ? venue.getLocation().getY() : null;
+                    Double longitude = venue.getLocation() != null ? venue.getLocation().getX() : null;
+
+                    return VenueBookingReportDto.builder()
+                            .id(venueId)
+                            .name(venue.getName())
+                            .ownerName(ownerName)
+                            .bookingsCount(bookingsCount)
+                            .address(venue.getAddress())
+                            .latitude(latitude)
+                            .longitude(longitude)
+                            .bookingsLastMonthCount(bookingsLastMonthCount)
+                            .incomeLastPeriod(incomeLastPeriod)
+                            .commissionLastPeriod(commissionLastPeriod)
+                            .ubigeo(venue.getUbigeo())
+                            .reviewsCount(reviewsCount)
+                            .reviewsAverage(reviewsAverage)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public VenueStatsResponseDto getVenueStats() {
+        log.info("[Venue] Obteniendo estadísticas de salones y propietarios");
+        return venueRepository.getVenueStats();
     }
 }

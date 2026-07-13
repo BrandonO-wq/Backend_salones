@@ -760,6 +760,9 @@ public class BookingServiceImpl implements BookingService {
             UUID hostId) {
         List<BookingEntity> bookings = bookingRepository.findBookingsByHostUserId(hostId);
 
+        UserEntity host = userRepository.findById(hostId).orElse(null);
+        String hostName = host != null ? host.getName() : "Anfitrión Desconocido";
+
         // Load sports parameters (parentId=1 : deportes)
         Map<Integer, String> sportsMap = new HashMap<>();
         try {
@@ -817,6 +820,8 @@ public class BookingServiceImpl implements BookingService {
                     b.getId(),
                     b.getVenueId(),
                     venueName,
+                    hostId,
+                    hostName,
                     b.getBookingDate(),
                     b.getCreatedAt(),
                     b.getTotalAmount(),
@@ -824,6 +829,76 @@ public class BookingServiceImpl implements BookingService {
                     avg,
                     count,
                     schedules));
+        }
+
+        return out;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse> getAllHostBookingSummaries() {
+        List<BookingEntity> bookings = bookingRepository.findAll();
+
+        // Carga eficiente de entidades relacionadas para evitar N+1 queries
+        List<UUID> venueIds = bookings.stream().map(BookingEntity::getVenueId).distinct().collect(Collectors.toList());
+        Map<UUID, VenueEntity> venueMap = venueRepository.findAllById(venueIds).stream()
+                .collect(Collectors.toMap(VenueEntity::getId, venue -> venue));
+
+        List<UUID> hostIds = venueMap.values().stream().map(VenueEntity::getHostUserId).distinct()
+                .collect(Collectors.toList());
+        Map<UUID, UserEntity> hostMap = userRepository.findAllById(hostIds).stream()
+                .collect(Collectors.toMap(UserEntity::getId, user -> user));
+
+        // Cargar parámetros de deportes (cacheado)
+        Map<Integer, String> sportsMap = new HashMap<>();
+        try {
+            List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> params = parameterService.getByParent(1);
+            for (com.sportsbooking.mainapi.dto.parameter.ParameterDto p : params) {
+                if (p.getIdParam() != null) {
+                    sportsMap.put(p.getIdParam(), p.getChildName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("No se pudo cargar parámetros de deportes: {}", e.getMessage());
+        }
+
+        List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse> out = new ArrayList<>();
+
+        for (BookingEntity b : bookings) {
+            VenueEntity venue = venueMap.get(b.getVenueId());
+            if (venue == null)
+                continue;
+
+            UserEntity host = hostMap.get(venue.getHostUserId());
+            UUID hostId = (host != null) ? host.getId() : null;
+            String hostName = (host != null) ? host.getName() : "Anfitrión Desconocido";
+
+            String venueName = venue.getName();
+
+            List<String> eventTypes = new ArrayList<>();
+            Integer[] sports = b.getSportsId();
+            if (sports != null) {
+                for (Integer s : sports) {
+                    if (s == null)
+                        continue;
+                    String name = sportsMap.getOrDefault(s, "Desconocido");
+                    if (!eventTypes.contains(name))
+                        eventTypes.add(name);
+                }
+            }
+
+            com.sportsbooking.mainapi.dto.review.response.VenueRatingSummary rs = reviewService
+                    .getRatingSummary(venue.getId());
+
+            String slotStr = getBookingTimeSlot(b.getDetails());
+            List<String> schedules = slotStr == null || slotStr.isBlank() ? List.of()
+                    : Arrays.stream(slotStr.split("\\s*,\\s*")).toList();
+
+            // NOTA: Esto asume que HostBookingSummaryResponse ha sido actualizado para
+            // incluir los detalles del anfitrión.
+            out.add(new com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse(
+                    b.getId(), b.getVenueId(), venueName, hostId, hostName, b.getBookingDate(), b.getCreatedAt(),
+                    b.getTotalAmount(), eventTypes, rs.avgRating(), rs.reviewCount(), schedules));
         }
 
         return out;

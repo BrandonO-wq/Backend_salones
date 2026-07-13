@@ -6,6 +6,8 @@ import com.sportsbooking.mainapi.dto.venue.request.CreateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.request.InBoundsRequest;
 import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
+import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -105,4 +107,18 @@ public interface VenueService {
      * @return mensaje de confirmación.
      */
     MessageResponse deletePhoto(UUID userId, UUID photoId);
+
+    /**
+     * Retorna un reporte de todos los venues con su cantidad de reservas y nombre del dueño.
+     *
+     * @return lista de canchas con su información de reservas y dueños.
+     */
+    List<VenueBookingReportDto> getVenuesBookingReport();
+
+    /**
+     * Retorna estadísticas del dashboard (total de salones y total de propietarios).
+     *
+     * @return estadísticas de salones y propietarios.
+     */
+    VenueStatsResponseDto getVenueStats();
 }

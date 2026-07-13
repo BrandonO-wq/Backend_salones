@@ -43,5 +43,7 @@ public interface BookingService {
         List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse> getHostBookingSummaries(
                         UUID hostId);
 
+        List<com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse> getAllHostBookingSummaries();
+
         List<ClientBookingResponse> getClientBookings(UUID clientId);
 }

@@ -7,6 +7,8 @@ import com.sportsbooking.mainapi.dto.venue.request.CreateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.request.InBoundsRequest;
 import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
+import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import com.sportsbooking.mainapi.service.VenueService;
 
@@ -270,5 +272,17 @@ public class VenueController {
                         @PathVariable UUID photoId,
                         @AuthenticationPrincipal UUID userId) {
                 return ResponseEntity.ok(venueService.deletePhoto(userId, photoId));
+        }
+
+        @Operation(summary = "Reporte de reservas por cancha", description = "Retorna una lista de todas las canchas con la cantidad de reservas y el nombre de su dueño.")
+        @GetMapping("/report/bookings")
+        public ResponseEntity<List<VenueBookingReportDto>> getVenuesBookingReport() {
+                return ResponseEntity.ok(venueService.getVenuesBookingReport());
+        }
+
+        @Operation(summary = "Estadísticas de salones y propietarios", description = "Retorna el número total de salones y el número total de propietarios únicos.")
+        @GetMapping("/report/stats")
+        public ResponseEntity<VenueStatsResponseDto> getVenueStats() {
+                return ResponseEntity.ok(venueService.getVenueStats());
         }
 }

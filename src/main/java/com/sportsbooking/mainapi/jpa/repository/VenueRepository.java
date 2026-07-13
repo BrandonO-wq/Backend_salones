@@ -1,7 +1,10 @@
 package com.sportsbooking.mainapi.jpa.repository;
 
+import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.jpa.entity.VenueEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus;
 
 import java.util.List;
@@ -23,4 +26,11 @@ public interface VenueRepository extends JpaRepository<VenueEntity, UUID> {
      * @return lista de venues.
      */
     List<VenueEntity> findByHostUserIdAndStatus(UUID hostUserId, VenueStatus status);
+
+    long countByHostUserId(UUID hostUserId);
+
+    @Query("SELECT new com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto(" +
+           "COUNT(v), COUNT(DISTINCT v.hostUserId)) " +
+           "FROM VenueEntity v")
+    VenueStatsResponseDto getVenueStats();
 }
