@@ -23,9 +23,9 @@ public interface VenueReviewRepository extends JpaRepository<VenueReviewEntity, 
 
     long countByVenueId(UUID venueId);
 
-    /**
-     * Promedio de puntuación de un venue (0 si no hay reviews).
-     */
     @Query("SELECT COALESCE(AVG(r.points), 0.0) FROM VenueReviewEntity r WHERE r.venueId = :venueId")
     double avgPointsByVenueId(@Param("venueId") UUID venueId);
+
+    @Query("SELECT COALESCE(AVG(r.points), 0.0) FROM VenueReviewEntity r JOIN VenueEntity v ON r.venueId = v.id WHERE v.hostUserId = :hostUserId")
+    double avgPointsByHostUserId(@Param("hostUserId") UUID hostUserId);
 }

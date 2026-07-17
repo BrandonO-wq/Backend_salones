@@ -6,6 +6,9 @@ import com.sportsbooking.mainapi.dto.notification.NotificationResponse;
 import com.sportsbooking.mainapi.jpa.entity.NotificationEntity;
 import com.sportsbooking.mainapi.jpa.entity.enums.NotificationType;
 import com.sportsbooking.mainapi.jpa.repository.NotificationRepository;
+import com.sportsbooking.mainapi.jpa.repository.UserRepository;
+import com.sportsbooking.mainapi.common.exception.ResourceNotFoundException;
+import com.sportsbooking.mainapi.common.constants.RouteConstants;
 import com.sportsbooking.mainapi.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +27,23 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final PushNotificationComponent pushNotificationComponent;
+    private final UserRepository userRepository;
+
+    @Override
+    @Transactional
+    public void notifyDebt(UUID userId, String title, String body) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("Usuario", userId);
+        }
+        sendPushAndSave(
+                userId,
+                title,
+                body,
+                NotificationType.DEBT_ALERT,
+                null,
+                Map.of("route", RouteConstants.HOST_DEBTS)
+        );
+    }
 
     @Override
     @Transactional

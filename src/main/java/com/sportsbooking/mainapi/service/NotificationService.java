@@ -13,6 +13,8 @@ public interface NotificationService {
 
     void sendPushAndSave(UUID userId, String title, String body, NotificationType type, UUID relatedId, Map<String, String> data);
 
+    void notifyDebt(UUID userId, String title, String body);
+
     long countUnread(UUID userId);
 
     void markAsRead(UUID notificationId, UUID userId);

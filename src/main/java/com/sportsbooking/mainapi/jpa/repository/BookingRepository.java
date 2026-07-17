@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -58,4 +59,15 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID> {
                         @Param("statuses") List<Integer> statuses,
                         @Param("startDate") LocalDate startDate,
                         @Param("endDate") LocalDate endDate);
+
+        @Query("SELECT COUNT(b) FROM BookingEntity b JOIN VenueEntity v ON b.venueId = v.id WHERE v.hostUserId = :hostUserId")
+        long countBookingsByHostUserId(@Param("hostUserId") UUID hostUserId);
+
+        @Query("SELECT COALESCE(SUM(b.totalAmount), 0.0) FROM BookingEntity b JOIN VenueEntity v ON b.venueId = v.id WHERE v.hostUserId = :hostUserId AND b.status IN (3, 4)")
+        BigDecimal sumEarningsByHostUserId(@Param("hostUserId") UUID hostUserId);
+
+        long countByVenueId(UUID venueId);
+
+        @Query("SELECT COALESCE(SUM(b.totalAmount), 0.0) FROM BookingEntity b WHERE b.venueId = :venueId AND b.status IN (3, 4)")
+        BigDecimal sumEarningsByVenueId(@Param("venueId") UUID venueId);
 }

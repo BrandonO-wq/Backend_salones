@@ -13,4 +13,5 @@ import java.util.UUID;
 public interface HostDebtsRepository extends JpaRepository<HostDebts, UUID> {
     boolean existsByCycleStart(LocalDate cycleStart);
     List<HostDebts> findByStatusNot(HostDebtStatus status);
+    List<HostDebts> findByHostUserIdAndStatusNot(UUID hostUserId, HostDebtStatus status);
 }

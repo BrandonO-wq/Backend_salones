@@ -26,6 +26,7 @@ public interface VenueRepository extends JpaRepository<VenueEntity, UUID> {
      * @return lista de venues.
      */
     List<VenueEntity> findByHostUserIdAndStatus(UUID hostUserId, VenueStatus status);
+    List<VenueEntity> findByHostUserId(UUID hostUserId);
 
     long countByHostUserId(UUID hostUserId);
 

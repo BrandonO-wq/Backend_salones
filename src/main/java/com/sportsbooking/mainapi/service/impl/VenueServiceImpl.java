@@ -11,6 +11,7 @@ import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
+import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
 import com.sportsbooking.mainapi.enums.ScheduleStatus;
 import com.sportsbooking.mainapi.enums.ScheduleType;
 import com.sportsbooking.mainapi.jpa.entity.*;
@@ -74,6 +75,7 @@ public class VenueServiceImpl implements VenueService {
     private final UserRepository userRepository;
     private final BookingRepository bookingRepository;
     private final HostDebtsRepository hostDebtsRepository;
+    private final ParameterRepository parameterRepository;
 
     /** Factory para crear geometrías JTS con SRID 4326 (WGS84). */
     private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
@@ -824,5 +826,45 @@ public class VenueServiceImpl implements VenueService {
     public VenueStatsResponseDto getVenueStats() {
         log.info("[Venue] Obteniendo estadísticas de salones y propietarios");
         return venueRepository.getVenueStats();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<HostVenueResponseDto> getHostVenues(UUID hostUserId) {
+        log.info("[Venue] Obteniendo salones para host ID: {}", hostUserId);
+
+        if (!userRepository.existsById(hostUserId)) {
+            throw new ResourceNotFoundException("Usuario", hostUserId);
+        }
+
+        List<VenueEntity> venues = venueRepository.findByHostUserId(hostUserId);
+
+        return venues.stream().map(venue -> {
+            List<String> eventTypes = List.of();
+            if (venue.getIdSports() != null && venue.getIdSports().length > 0) {
+                eventTypes = parameterRepository.findAllById(Arrays.asList(venue.getIdSports())).stream()
+                        .map(ParameterEntity::getChildName)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.toList());
+            }
+
+            double averageRating = reviewRepository.avgPointsByVenueId(venue.getId());
+            long bookingsCount = bookingRepository.countByVenueId(venue.getId());
+            BigDecimal totalEarnings = bookingRepository.sumEarningsByVenueId(venue.getId());
+
+            String statusStr = (venue.getStatus() == VenueStatus.ACTIVE) ? "ACTIVO" : "INACTIVO";
+            boolean isActive = (venue.getStatus() == VenueStatus.ACTIVE);
+
+            return HostVenueResponseDto.builder()
+                    .venueId(venue.getId())
+                    .name(venue.getName())
+                    .eventTypes(eventTypes)
+                    .averageRating(averageRating)
+                    .bookingsCount(bookingsCount)
+                    .totalEarnings(totalEarnings)
+                    .status(statusStr)
+                    .isActive(isActive)
+                    .build();
+        }).collect(Collectors.toList());
     }
 }

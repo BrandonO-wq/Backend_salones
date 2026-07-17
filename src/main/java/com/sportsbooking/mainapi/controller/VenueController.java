@@ -10,6 +10,8 @@ import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
+import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.sportsbooking.mainapi.service.VenueService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -284,5 +286,12 @@ public class VenueController {
         @GetMapping("/report/stats")
         public ResponseEntity<VenueStatsResponseDto> getVenueStats() {
                 return ResponseEntity.ok(venueService.getVenueStats());
+        }
+
+        @Operation(summary = "Obtener salones de un host", description = "Retorna el listado de salones de un host específico con su respectiva información de calificación, reservas, ingresos y estado.")
+        @GetMapping("/host/{idhost}")
+        @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
+        public ResponseEntity<List<HostVenueResponseDto>> getHostVenues(@PathVariable UUID idhost) {
+                return ResponseEntity.ok(venueService.getHostVenues(idhost));
         }
 }
