@@ -137,6 +137,9 @@ app:
       host-reminder-minutes: ${SCHEDULER_PUSH_HOST_REMINDER_MINUTES:120}
       host-autoconfirm-minutes: ${SCHEDULER_PUSH_HOST_AUTOCONFIRM_MINUTES:60}
       client-reminder-minutes: ${SCHEDULER_PUSH_CLIENT_REMINDER_MINUTES:60}
+    venue-disable:
+      enabled: ${SCHEDULER_VENUE_DISABLE_ENABLED:true}
+      interval: ${SCHEDULER_VENUE_DISABLE_INTERVAL:3600}
   # ------------------------------------
   # Configuración de Venues
   # ------------------------------------

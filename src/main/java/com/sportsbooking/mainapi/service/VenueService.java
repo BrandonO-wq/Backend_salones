@@ -131,4 +131,9 @@ public interface VenueService {
      * @return lista de salones detallados del host.
      */
     List<HostVenueResponseDto> getHostVenues(UUID hostUserId);
+
+    /**
+     * Inhabilita automáticamente los salones de eventos cuyo deadline de deuda haya vencido.
+     */
+    void disableVenuesPastDeadline();
 }

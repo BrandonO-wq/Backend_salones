@@ -3,6 +3,9 @@ package com.sportsbooking.mainapi.service.impl;
 import com.sportsbooking.mainapi.dto.commission.HostDebtorResponseDto;
 import com.sportsbooking.mainapi.dto.commission.VenueCommissionResponse;
 import com.sportsbooking.mainapi.dto.commission.RegisteredHostResponseDto;
+import com.sportsbooking.mainapi.dto.commission.VenueDebtReportResponseDto;
+import com.sportsbooking.mainapi.jpa.repository.VenueReviewRepository;
+import com.sportsbooking.mainapi.jpa.entity.VenueReviewEntity;
 import com.sportsbooking.mainapi.jpa.entity.BookingEntity;
 import com.sportsbooking.mainapi.jpa.entity.HostDebtResponseDto;
 import com.sportsbooking.mainapi.jpa.entity.HostDebts;
@@ -17,12 +20,21 @@ import com.sportsbooking.mainapi.jpa.repository.ParameterRepository;
 import com.sportsbooking.mainapi.jpa.repository.UserRepository;
 import com.sportsbooking.mainapi.jpa.repository.VenueRepository;
 import com.sportsbooking.mainapi.service.CommissionService;
+import com.sportsbooking.mainapi.components.OtpComponent;
+import com.sportsbooking.mainapi.components.email.CommissionEmail;
+import com.sportsbooking.mainapi.components.email.CycleEmail;
+import com.sportsbooking.mainapi.dto.commission.ConfirmCycleConfigChangeRequest;
+import com.sportsbooking.mainapi.dto.common.MessageResponse;
+import com.sportsbooking.mainapi.common.exception.BusinessException;
+import com.sportsbooking.mainapi.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,12 +57,15 @@ public class CommissionServiceImpl implements CommissionService {
         private final VenueRepository venueRepository;
         private final ParameterRepository parameterRepository;
         private final UserRepository userRepository;
+        private final OtpComponent otpComponent;
+        private final CommissionEmail commissionEmail;
+        private final CycleEmail cycleEmail;
+        private final VenueReviewRepository venueReviewRepository;
 
-        @Value("${app.commission.cycle-days:15}")
-        private int commissionCycleDays;
-
-        @Value("${app.commission.deadline-offset-days:1}")
-        private int deadlineOffsetDays;
+        private static final int PARAM_CYCLE_DAYS = 58;
+        private static final int PARAM_DEADLINE_OFFSET = 59;
+        private static final int PARAM_CYCLE_START_DAY = 60;
+        private static final int PARAM_CYCLE_START_HOUR = 61;
 
         // Supongamos una comisión fija del 10% para el ejemplo
         private static final BigDecimal COMMISSION_RATE = new BigDecimal("0.10");
@@ -65,14 +80,26 @@ public class CommissionServiceImpl implements CommissionService {
         @Scheduled(cron = "0 0 23 * * SUN")
         @Transactional
         public void generateDebtsForPreviousCycle() {
+                int cycleDays = parameterRepository.findById(PARAM_CYCLE_DAYS)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 14)
+                                .orElse(14);
+                int deadlineOffset = parameterRepository.findById(PARAM_DEADLINE_OFFSET)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 1)
+                                .orElse(1);
+                int startHour = parameterRepository.findById(PARAM_CYCLE_START_HOUR)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 0)
+                                .orElse(0);
+
                 // El ciclo que acaba de terminar finalizó hoy (Domingo)
                 LocalDate cycleEnd = LocalDate.now();
-                // El ciclo comenzó hace 14 días (13 días atrás, es decir el Lunes de hace 2
-                // semanas)
-                LocalDate cycleStart = cycleEnd.minusDays(13);
+                // El ciclo comenzó hace cycleDays - 1 días atrás
+                LocalDate cycleStart = cycleEnd.minusDays(cycleDays - 1);
 
-                log.info("[CommissionScheduler] Iniciando generación de deudas para el ciclo de 14 días: {} a {}",
-                                cycleStart, cycleEnd);
+                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
+                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0)).minusNanos(1).atOffset(ZoneOffset.UTC);
+
+                log.info("[CommissionScheduler] Iniciando generación de deudas para el ciclo de {} días: {} a {}",
+                                cycleDays, startDateTime, endDateTime);
 
                 if (hostDebtsRepository.existsByCycleStart(cycleStart)) {
                         log.warn(
@@ -81,11 +108,10 @@ public class CommissionServiceImpl implements CommissionService {
                         return;
                 }
 
-                // 1. Obtener todas las reservas confirmadas o completadas en el ciclo (usando
-                // confirmedAt)
-                List<BookingEntity> completedBookings = bookingRepository.findByStatusInAndConfirmedAtDateBetween(
+                // 1. Obtener todas las reservas confirmadas o completadas en el ciclo
+                List<BookingEntity> completedBookings = bookingRepository.findByStatusInAndConfirmedAtBetween(
                                 List.of(BookingStatus.CONFIRMED.getValue(), BookingStatus.COMPLETED.getValue()),
-                                cycleStart, cycleEnd);
+                                startDateTime, endDateTime);
 
                 if (completedBookings.isEmpty()) {
                         log.info(
@@ -124,14 +150,14 @@ public class CommissionServiceImpl implements CommissionService {
 
                         BigDecimal commissionAmount = totalIncome.multiply(commissionRate);
 
-                        LocalDate deadlineDate = cycleEnd.plusDays(1);
+                        LocalDate deadlineDate = cycleEnd.plusDays(deadlineOffset);
 
                         HostDebts newDebt = HostDebts.builder()
                                         .hostUserId(hostId)
                                         .venueId(venueId)
                                         .cycleStart(cycleStart)
                                         .cycleEnd(cycleEnd)
-                                        .deadline(deadlineDate.atStartOfDay().atOffset(ZoneOffset.UTC))
+                                        .deadline(deadlineDate.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC))
                                         .totalIncome(totalIncome)
                                         .commissionAmount(commissionAmount)
                                         .build(); // El estado PENDING es el default
@@ -159,24 +185,43 @@ public class CommissionServiceImpl implements CommissionService {
 
         @Override
         public VenueCommissionResponse calculateCurrentCycleCommission(UUID venueId) {
-                // Calcular el ciclo actual: 14 días empezando Lunes y terminando Domingo
-                LocalDate today = LocalDate.now();
-                LocalDate lastMonday = today.minusDays(today.getDayOfWeek().getValue() - 1); // Lunes de esta semana
+                int cycleDays = parameterRepository.findById(PARAM_CYCLE_DAYS)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 14)
+                                .orElse(14);
+                int deadlineOffset = parameterRepository.findById(PARAM_DEADLINE_OFFSET)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 1)
+                                .orElse(1);
+                int startDayValue = parameterRepository.findById(PARAM_CYCLE_START_DAY)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 1)
+                                .orElse(1); // 1 = Lunes
+                int startHour = parameterRepository.findById(PARAM_CYCLE_START_HOUR)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 0)
+                                .orElse(0);
 
-                // Calcular si estamos en la primera o segunda semana del ciclo de 14 días
-                long daysSinceEpoch = lastMonday.toEpochDay();
-                long weekNumber = daysSinceEpoch / 7;
+                // Calcular el ciclo actual
+                LocalDate today = LocalDate.now();
+                int todayValue = today.getDayOfWeek().getValue();
+                int daysToSubtract = (todayValue - startDayValue + 7) % 7;
+                LocalDate mostRecentStartDay = today.minusDays(daysToSubtract);
 
                 LocalDate cycleStart;
-                if (weekNumber % 2 == 0) {
-                        // Primera semana del ciclo actual
-                        cycleStart = lastMonday;
+                if (cycleDays <= 7) {
+                        cycleStart = mostRecentStartDay;
                 } else {
-                        // Segunda semana del ciclo actual, retroceder 7 días al Lunes anterior
-                        cycleStart = lastMonday.minusDays(7);
+                        // Calcular si estamos en la primera o segunda semana del ciclo de 14 días
+                        long daysSinceEpoch = mostRecentStartDay.toEpochDay();
+                        long weekNumber = daysSinceEpoch / 7;
+                        if (weekNumber % 2 == 0) {
+                                cycleStart = mostRecentStartDay;
+                        } else {
+                                cycleStart = mostRecentStartDay.minusDays(7);
+                        }
                 }
 
-                LocalDate cycleEnd = cycleStart.plusDays(13); // 14 días (0-13)
+                LocalDate cycleEnd = cycleStart.plusDays(cycleDays - 1);
+
+                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
+                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0)).minusNanos(1).atOffset(ZoneOffset.UTC);
 
                 // Obtener comisión del parámetro 57
                 ParameterEntity commissionParam = parameterRepository.findById(57).orElseThrow(
@@ -187,12 +232,10 @@ public class CommissionServiceImpl implements CommissionService {
                 VenueEntity venue = venueRepository.findById(venueId).orElseThrow(
                                 () -> new IllegalArgumentException("Venue not found: " + venueId));
 
-                // Obtener todas las reservas confirmadas o completadas del venue en el ciclo
-                // (usando
-                // confirmedAt)
-                List<BookingEntity> completedBookings = bookingRepository.findByStatusInAndConfirmedAtDateBetween(
+                // Obtener todas las reservas confirmadas o completadas del venue en el ciclo (usando confirmedAt)
+                List<BookingEntity> completedBookings = bookingRepository.findByStatusInAndConfirmedAtBetween(
                                 List.of(BookingStatus.CONFIRMED.getValue(), BookingStatus.COMPLETED.getValue()),
-                                cycleStart, cycleEnd).stream()
+                                startDateTime, endDateTime).stream()
                                 .filter(b -> b.getVenueId().equals(venueId))
                                 .collect(Collectors.toList());
 
@@ -204,8 +247,8 @@ public class CommissionServiceImpl implements CommissionService {
                 // Calcular comisión
                 BigDecimal commissionAmount = totalIncome.multiply(commissionRate);
 
-                // Deadline es un día después del fin de ciclo
-                OffsetDateTime deadline = cycleEnd.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+                // Deadline es deadlineOffset días después del fin de ciclo, a la hora de inicio especificada
+                OffsetDateTime deadline = cycleEnd.plusDays(deadlineOffset).atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
 
                 return VenueCommissionResponse.builder()
                                 .venueName(venue.getName())
@@ -386,5 +429,335 @@ public class CommissionServiceImpl implements CommissionService {
                                                         .build();
                                 })
                                 .collect(Collectors.toList());
+        }
+
+        @Override
+        @Transactional
+        public MessageResponse requestCommissionChange(UUID adminUserId) {
+                UserEntity admin = userRepository.findById(adminUserId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Usuario", adminUserId));
+
+                // 1. Rate-limit global de OTP por email
+                otpComponent.checkAndIncrementOtpRate(admin.getEmail());
+
+                // 2. Verificar cooldown
+                if (otpComponent.isCooldownActive(adminUserId)) {
+                        throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                                        "Debes esperar antes de volver a solicitar el código OTP.");
+                }
+
+                // 3. Generar OTP de 4 dígitos
+                String otpCode = otpComponent.generateAndStoreOtp(adminUserId);
+
+                // 4. Enviar email
+                commissionEmail.send(admin.getName(), admin.getEmail(), otpCode);
+
+                log.info("OTP de cambio de comisión enviado a admin: {} (id={})", admin.getEmail(), admin.getId());
+                return new MessageResponse("Código de verificación enviado exitosamente a tu correo.");
+        }
+
+        @Override
+        @Transactional
+        public MessageResponse confirmCommissionChange(UUID adminUserId, String otpCode, Double newValue) {
+                if (newValue == null || newValue < 0) {
+                        throw new BusinessException("El valor de comisión debe ser mayor o igual a cero.");
+                }
+
+                // 1. Validar OTP
+                boolean isValid = otpComponent.validateOtp(adminUserId, otpCode);
+                if (!isValid) {
+                        throw new BusinessException("El código de verificación es inválido o ha expirado.");
+                }
+
+                // 2. Buscar y actualizar el parámetro 57
+                ParameterEntity commissionParam = parameterRepository.findById(57)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", 57));
+
+                commissionParam.setValue(newValue);
+                parameterRepository.save(commissionParam);
+
+                log.info("Comisión de sistema actualizada a {} por admin ID: {}", newValue, adminUserId);
+                return new MessageResponse("Comisión actualizada exitosamente.");
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public Double getCommissionPercentage() {
+                ParameterEntity commissionParam = parameterRepository.findById(57)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", 57));
+                return commissionParam.getValue();
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public List<VenueDebtReportResponseDto> getVenueDebtReport() {
+                List<VenueEntity> venues = venueRepository.findAll();
+                if (venues.isEmpty()) {
+                        return List.of();
+                }
+
+                // 1. Obtener todos los usuarios propietarios para mapear en memoria
+                Map<UUID, UserEntity> usersMap = userRepository.findAll().stream()
+                                .filter(u -> u.getId() != null)
+                                .collect(Collectors.toMap(UserEntity::getId, Function.identity(), (u1, u2) -> u1));
+
+                // 2. Obtener todas las deudas y agruparlas por venueId en memoria
+                List<HostDebts> allDebts = hostDebtsRepository.findAll();
+                Map<UUID, List<HostDebts>> debtsByVenue = allDebts.stream()
+                                .filter(d -> d.getVenueId() != null)
+                                .collect(Collectors.groupingBy(HostDebts::getVenueId));
+
+                // 3. Obtener todas las calificaciones y agrupar promedio en memoria
+                List<VenueReviewEntity> allReviews = venueReviewRepository.findAll();
+                Map<UUID, Double> ratingsByVenue = allReviews.stream()
+                                .filter(r -> r.getVenueId() != null)
+                                .collect(Collectors.groupingBy(
+                                                VenueReviewEntity::getVenueId,
+                                                Collectors.averagingDouble(VenueReviewEntity::getPoints)
+                                ));
+
+                OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+                return venues.stream().map(venue -> {
+                        UserEntity owner = usersMap.get(venue.getHostUserId());
+                        String ownerName = owner != null ? owner.getName() : "Sin propietario";
+                        String ownerEmail = owner != null ? owner.getEmail() : "";
+
+                        List<HostDebts> venueDebts = debtsByVenue.getOrDefault(venue.getId(), List.of());
+                        List<HostDebts> unpaidDebts = venueDebts.stream()
+                                        .filter(d -> d.getStatus() != HostDebtStatus.PAID)
+                                        .collect(Collectors.toList());
+
+                        String debtStatus = "PAID";
+                        long delayDays = 0;
+
+                        if (venueDebts.isEmpty()) {
+                                debtStatus = "NONE";
+                        } else if (!unpaidDebts.isEmpty()) {
+                                boolean hasOverdue = unpaidDebts.stream().anyMatch(d -> 
+                                        d.getStatus() == HostDebtStatus.OVERDUE || 
+                                        (d.getDeadline() != null && d.getDeadline().isBefore(now))
+                                );
+                                debtStatus = hasOverdue ? "OVERDUE" : "PENDING";
+
+                                delayDays = unpaidDebts.stream()
+                                                .mapToLong(d -> {
+                                                        if (d.getDeadline() != null && d.getDeadline().isBefore(now)) {
+                                                                return java.time.temporal.ChronoUnit.DAYS.between(d.getDeadline(), now);
+                                                        }
+                                                        return 0L;
+                                                })
+                                                .max()
+                                                .orElse(0L);
+                        }
+
+                        double commissionAmount = 0.0;
+                        double totalIncome = 0.0;
+                        OffsetDateTime deadline = null;
+
+                        if (!unpaidDebts.isEmpty()) {
+                                commissionAmount = unpaidDebts.stream()
+                                                .mapToDouble(d -> d.getCommissionAmount() != null ? d.getCommissionAmount().doubleValue() : 0.0)
+                                                .sum();
+                                totalIncome = unpaidDebts.stream()
+                                                .mapToDouble(d -> d.getTotalIncome() != null ? d.getTotalIncome().doubleValue() : 0.0)
+                                                .sum();
+                                deadline = unpaidDebts.stream()
+                                                .map(HostDebts::getDeadline)
+                                                .filter(d -> d != null)
+                                                .min(OffsetDateTime::compareTo)
+                                                .orElse(null);
+                        } else if (!venueDebts.isEmpty()) {
+                                HostDebts latestDebt = venueDebts.stream()
+                                                .max((d1, d2) -> {
+                                                        if (d1.getCycleEnd() == null || d2.getCycleEnd() == null) return 0;
+                                                        return d1.getCycleEnd().compareTo(d2.getCycleEnd());
+                                                }).orElse(null);
+                                if (latestDebt != null) {
+                                        commissionAmount = latestDebt.getCommissionAmount() != null ? latestDebt.getCommissionAmount().doubleValue() : 0.0;
+                                        totalIncome = latestDebt.getTotalIncome() != null ? latestDebt.getTotalIncome().doubleValue() : 0.0;
+                                        deadline = latestDebt.getDeadline();
+                                }
+                        }
+
+                        double rating = ratingsByVenue.getOrDefault(venue.getId(), 0.0);
+                        double latitude = venue.getLocation() != null ? venue.getLocation().getY() : 0.0;
+                        double longitude = venue.getLocation() != null ? venue.getLocation().getX() : 0.0;
+
+                        return VenueDebtReportResponseDto.builder()
+                                        .venueId(venue.getId())
+                                        .venueName(venue.getName())
+                                        .ownerName(ownerName)
+                                        .ownerEmail(ownerEmail)
+                                        .delayDays(delayDays)
+                                        .address(venue.getAddress())
+                                        .latitude(latitude)
+                                        .longitude(longitude)
+                                        .ubigeo(venue.getUbigeo())
+                                        .rating(rating)
+                                        .debtStatus(debtStatus)
+                                        .commissionAmount(commissionAmount)
+                                        .totalIncome(totalIncome)
+                                        .deadline(deadline)
+                                        .build();
+                }).collect(Collectors.toList());
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional
+        public MessageResponse toggleVenueStatus(UUID venueId, boolean active) {
+                VenueEntity venue = venueRepository.findById(venueId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Venue", venueId));
+                if (active) {
+                        venue.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus.ACTIVE);
+                        venue.setDisabledReason(3);
+                } else {
+                        venue.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus.INACTIVE);
+                        venue.setDisabledReason(2);
+                }
+                venueRepository.save(venue);
+                return new MessageResponse("Estado del salón actualizado con éxito");
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional
+        public MessageResponse enableVenue(UUID venueId) {
+                VenueEntity venue = venueRepository.findById(venueId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Venue", venueId));
+                venue.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus.ACTIVE);
+                venue.setDisabledReason(3);
+                venueRepository.save(venue);
+                return new MessageResponse("Salón habilitado con éxito");
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional(readOnly = true)
+        public Map<String, Object> getVenueDisabledStatus(UUID venueId) {
+                VenueEntity venue = venueRepository.findById(venueId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Venue", venueId));
+                
+                Integer reason = venue.getDisabledReason();
+                if (reason == null) {
+                        reason = 0;
+                }
+                
+                String description;
+                switch (reason) {
+                        case 1:
+                                description = "bloqueado automatico";
+                                break;
+                        case 2:
+                                description = "bloqueado manualmente";
+                                break;
+                        case 3:
+                                description = "habilitado manualmente";
+                                break;
+                        case 0:
+                        default:
+                                description = "activo";
+                                break;
+                }
+                
+                return Map.of(
+                        "disabledReason", reason,
+                        "description", description,
+                        "status", venue.getStatus() != null ? venue.getStatus().name() : "UNKNOWN"
+                );
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional(readOnly = true)
+        public Map<String, Object> getCycleConfig() {
+                int cycleDays = parameterRepository.findById(PARAM_CYCLE_DAYS)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 14)
+                                .orElse(14);
+                int deadlineOffset = parameterRepository.findById(PARAM_DEADLINE_OFFSET)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 1)
+                                .orElse(1);
+                int startDayValue = parameterRepository.findById(PARAM_CYCLE_START_DAY)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 1)
+                                .orElse(1);
+                int startHour = parameterRepository.findById(PARAM_CYCLE_START_HOUR)
+                                .map(p -> p.getValue() != null ? p.getValue().intValue() : 0)
+                                .orElse(0);
+
+                String startDayName;
+                switch (startDayValue) {
+                        case 1: startDayName = "Lunes"; break;
+                        case 2: startDayName = "Martes"; break;
+                        case 3: startDayName = "Miércoles"; break;
+                        case 4: startDayName = "Jueves"; break;
+                        case 5: startDayName = "Viernes"; break;
+                        case 6: startDayName = "Sábado"; break;
+                        case 7: startDayName = "Domingo"; break;
+                        default: startDayName = "Desconocido"; break;
+                }
+
+                return Map.of(
+                        "cycleDays", cycleDays,
+                        "deadlineOffsetDays", deadlineOffset,
+                        "startDayOfWeek", startDayValue,
+                        "startDayName", startDayName,
+                        "startHour", startHour
+                );
+        }
+
+        @Override
+        @Transactional
+        public MessageResponse requestCycleConfigChange(UUID adminUserId) {
+                UserEntity admin = userRepository.findById(adminUserId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Usuario", adminUserId));
+
+                // 1. Rate-limit de OTP
+                otpComponent.checkAndIncrementOtpRate(admin.getEmail());
+
+                // 2. Cooldown check
+                if (otpComponent.isCooldownActive(adminUserId)) {
+                        throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                                        "Debes esperar antes de volver a solicitar el código OTP.");
+                }
+
+                // 3. Generar OTP
+                String otpCode = otpComponent.generateAndStoreOtp(adminUserId);
+
+                // 4. Enviar email
+                cycleEmail.send(admin.getName(), admin.getEmail(), otpCode);
+
+                log.info("OTP de cambio de ciclo enviado a admin: {} (id={})", admin.getEmail(), admin.getId());
+                return new MessageResponse("Código de verificación enviado exitosamente a tu correo.");
+        }
+
+        @Override
+        @Transactional
+        public MessageResponse confirmCycleConfigChange(UUID adminUserId, ConfirmCycleConfigChangeRequest request) {
+                // 1. Validar OTP
+                boolean isValid = otpComponent.validateOtp(adminUserId, request.otpCode());
+                if (!isValid) {
+                        throw new BusinessException("El código de verificación es inválido o ha expirado.");
+                }
+
+                // 2. Buscar y actualizar los parámetros 58, 59, 60, 61
+                ParameterEntity cycleDaysParam = parameterRepository.findById(PARAM_CYCLE_DAYS)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", PARAM_CYCLE_DAYS));
+                ParameterEntity deadlineOffsetParam = parameterRepository.findById(PARAM_DEADLINE_OFFSET)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", PARAM_DEADLINE_OFFSET));
+                ParameterEntity startDayParam = parameterRepository.findById(PARAM_CYCLE_START_DAY)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", PARAM_CYCLE_START_DAY));
+                ParameterEntity startHourParam = parameterRepository.findById(PARAM_CYCLE_START_HOUR)
+                                .orElseThrow(() -> new ResourceNotFoundException("Parámetro", PARAM_CYCLE_START_HOUR));
+
+                cycleDaysParam.setValue(request.cycleDays().doubleValue());
+                deadlineOffsetParam.setValue(request.deadlineOffsetDays().doubleValue());
+                startDayParam.setValue(request.startDayOfWeek().doubleValue());
+                startHourParam.setValue(request.startHour().doubleValue());
+
+                parameterRepository.save(cycleDaysParam);
+                parameterRepository.save(deadlineOffsetParam);
+                parameterRepository.save(startDayParam);
+                parameterRepository.save(startHourParam);
+
+                log.info("Configuración de ciclo de comisiones actualizada: ciclo={}, límite={}, día={}, hora={} por admin ID: {}",
+                                request.cycleDays(), request.deadlineOffsetDays(), request.startDayOfWeek(), request.startHour(), adminUserId);
+                return new MessageResponse("Configuración del ciclo de comisiones actualizada exitosamente.");
         }
 }

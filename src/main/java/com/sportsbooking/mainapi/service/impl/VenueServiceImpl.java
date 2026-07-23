@@ -15,6 +15,7 @@ import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
 import com.sportsbooking.mainapi.enums.ScheduleStatus;
 import com.sportsbooking.mainapi.enums.ScheduleType;
 import com.sportsbooking.mainapi.jpa.entity.*;
+import com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus;
 import com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus;
 import com.sportsbooking.mainapi.jpa.myrepository.VenueMyRepository;
 import com.sportsbooking.mainapi.jpa.repository.*;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import com.sportsbooking.mainapi.enums.AppDayOfWeek;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -866,5 +868,44 @@ public class VenueServiceImpl implements VenueService {
                     .isActive(isActive)
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void disableVenuesPastDeadline() {
+        log.info("[VenueStatusCheck] Iniciando verificación de deudas vencidas para inhabilitar salones...");
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // 1. Obtener deudas no pagadas
+        List<HostDebts> unpaidDebts = hostDebtsRepository.findByStatusNot(HostDebtStatus.PAID);
+        
+        int disabledCount = 0;
+        for (HostDebts debt : unpaidDebts) {
+            if (debt.getDeadline() != null && debt.getDeadline().isBefore(now)) {
+                UUID venueId = debt.getVenueId();
+                if (venueId != null) {
+                    Optional<VenueEntity> venueOpt = venueRepository.findById(venueId);
+                    if (venueOpt.isPresent()) {
+                        VenueEntity venue = venueOpt.get();
+                        
+                        // Si el venue está activo, lo inhabilitamos automáticamente
+                        if (venue.getStatus() == VenueStatus.ACTIVE) {
+                            venue.setStatus(VenueStatus.INACTIVE);
+                            venue.setDisabledReason(1); // 1 = inhabilitado automáticamente
+                            venueRepository.save(venue);
+                            disabledCount++;
+                            log.info("[VenueStatusCheck] Venue '{}' (ID: {}) inhabilitado automáticamente debido a deuda vencida (Deadline: {})", 
+                                    venue.getName(), venue.getId(), debt.getDeadline());
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (disabledCount > 0) {
+            log.info("[VenueStatusCheck] Proceso finalizado. Se inhabilitaron {} salones.", disabledCount);
+        } else {
+            log.debug("[VenueStatusCheck] No se encontraron nuevos salones por inhabilitar.");
+        }
     }
 }

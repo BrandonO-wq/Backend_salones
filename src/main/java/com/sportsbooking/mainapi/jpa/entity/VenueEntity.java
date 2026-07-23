@@ -181,4 +181,8 @@ public class VenueEntity {
 
     @Column(name = "pricing_end_time")
     private LocalTime pricingEndTime;
+
+    @Column(name = "disabled_reason")
+    @Builder.Default
+    private Integer disabledReason = 0;
 }

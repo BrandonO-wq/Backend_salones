@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,6 +60,12 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID> {
                         @Param("statuses") List<Integer> statuses,
                         @Param("startDate") LocalDate startDate,
                         @Param("endDate") LocalDate endDate);
+
+        @Query("SELECT b FROM BookingEntity b WHERE b.status IN :statuses AND b.confirmedAt BETWEEN :startDateTime AND :endDateTime")
+        List<BookingEntity> findByStatusInAndConfirmedAtBetween(
+                        @Param("statuses") List<Integer> statuses,
+                        @Param("startDateTime") OffsetDateTime startDateTime,
+                        @Param("endDateTime") OffsetDateTime endDateTime);
 
         @Query("SELECT COUNT(b) FROM BookingEntity b JOIN VenueEntity v ON b.venueId = v.id WHERE v.hostUserId = :hostUserId")
         long countBookingsByHostUserId(@Param("hostUserId") UUID hostUserId);
