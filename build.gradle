@@ -72,6 +72,9 @@ dependencies {
     implementation 'com.google.firebase:firebase-admin:9.8.0'
     implementation 'com.google.code.gson:gson:2.11.0'
 
+    // Google API Client for Google OAuth Token Verification
+    implementation 'com.google.api-client:google-api-client:2.6.0'
+
     // Other...
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

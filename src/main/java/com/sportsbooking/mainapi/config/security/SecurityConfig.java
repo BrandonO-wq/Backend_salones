@@ -61,6 +61,7 @@ public class SecurityConfig {
                         "/auth/login",
                         "/auth/admin/login",
                         "/auth/refresh",
+                        "/auth/google",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"
@@ -97,6 +98,9 @@ public class SecurityConfig {
                                                 .permitAll()
                                                 .requestMatchers(org.springframework.http.HttpMethod.GET,
                                                                 "/venues/report/stats")
+                                                .permitAll()
+                                                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                                                "/venues/report/detailed")
                                                 .permitAll()
                                                 .requestMatchers(org.springframework.http.HttpMethod.POST,
                                                                 "/venues/in-bounds")

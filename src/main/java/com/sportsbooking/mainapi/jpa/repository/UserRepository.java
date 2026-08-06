@@ -59,6 +59,14 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
      */
     Optional<UserEntity> findByFbToken(String fbToken);
 
+    /**
+     * Busca un usuario activo por su email (donde deleted_at es nulo).
+     *
+     * @param email email del usuario.
+     * @return Optional con la entidad si se encuentra y está activa.
+     */
+    Optional<UserEntity> findByEmailAndDeletedAtIsNull(String email);
+
     @Query("SELECT u FROM UserEntity u WHERE u.id IN (SELECT DISTINCT v.hostUserId FROM VenueEntity v) ORDER BY u.createdAt DESC")
     List<UserEntity> findHosts();
 }

@@ -828,7 +828,9 @@ public class BookingServiceImpl implements BookingService {
                     eventTypes,
                     avg,
                     count,
-                    schedules));
+                    schedules,
+                    b.getStatus(),
+                    b.getVoucherUrl()));
         }
 
         return out;
@@ -898,7 +900,8 @@ public class BookingServiceImpl implements BookingService {
             // incluir los detalles del anfitrión.
             out.add(new com.sportsbooking.mainapi.dto.booking.response.HostBookingSummaryResponse(
                     b.getId(), b.getVenueId(), venueName, hostId, hostName, b.getBookingDate(), b.getCreatedAt(),
-                    b.getTotalAmount(), eventTypes, rs.avgRating(), rs.reviewCount(), schedules));
+                    b.getTotalAmount(), eventTypes, rs.avgRating(), rs.reviewCount(), schedules, b.getStatus(),
+                    b.getVoucherUrl()));
         }
 
         return out;

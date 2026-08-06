@@ -9,6 +9,7 @@ import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueDetailedReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -248,7 +249,7 @@ public class VenueController {
                         @ApiResponse(responseCode = "404", description = "Foto no encontrada")
         })
         @GetMapping("/photos/{photoId}")
-        public ResponseEntity<Resource> getPhoto(@PathVariable UUID photoId) {
+        public ResponseEntity<Resource> getPhoto(@PathVariable("photoId") UUID photoId) {
                 return venueService.getPhotoResource(photoId);
         }
 
@@ -271,7 +272,7 @@ public class VenueController {
         })
         @DeleteMapping("/photos/{photoId}")
         public ResponseEntity<MessageResponse> deletePhoto(
-                        @PathVariable UUID photoId,
+                        @PathVariable("photoId") UUID photoId,
                         @AuthenticationPrincipal UUID userId) {
                 return ResponseEntity.ok(venueService.deletePhoto(userId, photoId));
         }
@@ -288,10 +289,16 @@ public class VenueController {
                 return ResponseEntity.ok(venueService.getVenueStats());
         }
 
+        @Operation(summary = "Reporte detallado de salones", description = "Retorna una lista detallada de salones con información del dueño, reservas, ingresos, comisiones, ganancias y ubigeo.")
+        @GetMapping("/report/detailed")
+        public ResponseEntity<List<VenueDetailedReportDto>> getVenuesDetailedReport() {
+                return ResponseEntity.ok(venueService.getVenuesDetailedReport());
+        }
+
         @Operation(summary = "Obtener salones de un host", description = "Retorna el listado de salones de un host específico con su respectiva información de calificación, reservas, ingresos y estado.")
         @GetMapping("/host/{idhost}")
         @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
-        public ResponseEntity<List<HostVenueResponseDto>> getHostVenues(@PathVariable UUID idhost) {
+        public ResponseEntity<List<HostVenueResponseDto>> getHostVenues(@PathVariable("idhost") UUID idhost) {
                 return ResponseEntity.ok(venueService.getHostVenues(idhost));
         }
 }

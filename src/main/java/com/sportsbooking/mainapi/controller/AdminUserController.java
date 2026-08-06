@@ -39,7 +39,7 @@ public class AdminUserController {
     @PostMapping("/{userId}/notify-debt")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<MessageResponse> notifyDebt(
-            @PathVariable UUID userId,
+            @PathVariable("userId") UUID userId,
             @Valid @RequestBody NotifyDebtRequest request) {
         notificationService.notifyDebt(userId, request.title(), request.body());
         return ResponseEntity.ok(new MessageResponse("Notificación de deuda enviada exitosamente."));

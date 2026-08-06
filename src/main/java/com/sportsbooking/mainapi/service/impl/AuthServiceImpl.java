@@ -7,6 +7,11 @@ import com.sportsbooking.mainapi.common.exception.ResourceNotFoundException;
 import com.sportsbooking.mainapi.components.JwtProviderComponent;
 import com.sportsbooking.mainapi.components.publisher.RegisterEmailPublisher;
 import com.sportsbooking.mainapi.components.publisher.RecoveryEmailPublisher;
+import com.sportsbooking.mainapi.dto.auth.request.GoogleLoginRequest;
+import com.sportsbooking.mainapi.dto.auth.request.VerifyDeleteRequest;
+import com.sportsbooking.mainapi.service.GoogleAuthService;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.sportsbooking.mainapi.components.publisher.DeleteAccountEmailPublisher;
 import com.sportsbooking.mainapi.dto.auth.request.ForgotPasswordRequest;
 import com.sportsbooking.mainapi.dto.auth.request.LoginRequest;
 import com.sportsbooking.mainapi.dto.auth.request.RefreshTokenRequest;
@@ -83,6 +88,8 @@ public class AuthServiceImpl implements AuthService {
     private final OtpComponent otpComponent;
     private final RegisterEmailPublisher registerEmailPublisher;
     private final RecoveryEmailPublisher recoveryEmailPublisher;
+    private final GoogleAuthService googleAuthService;
+    private final DeleteAccountEmailPublisher deleteAccountEmailPublisher;
 
     // ─────────────────────────────────────────────
     // Registro
@@ -119,9 +126,9 @@ public class AuthServiceImpl implements AuthService {
 
         UserEntity user;
 
-        // 2. Si existe INACTIVO con ese email, sobreescribir (permite re-registro
+        // 2. Si existe INACTIVO con ese email y activo (no eliminado), sobreescribir (permite re-registro
         // ilimitado hasta verificar)
-        var existing = userRepository.findByEmail(email);
+        var existing = userRepository.findByEmailAndDeletedAtIsNull(email);
         if (existing.isPresent()) {
             user = existing.get();
             user.setName(toTitleCase(request.name()));
@@ -129,6 +136,7 @@ public class AuthServiceImpl implements AuthService {
             user.setUbigeo(request.ubigeo());
             user.setPasswordHash(passwordEncoder.encode(request.password()));
             user.setVerified(false);
+            user.setDeletedAt(null);
             user = userRepository.save(user);
             log.info("Usuario INACTIVO sobreescrito para re-registro: {} (id={})", email, user.getId());
         } else {
@@ -673,5 +681,95 @@ public class AuthServiceImpl implements AuthService {
             }
         }
         return sb.toString();
+    }
+
+    @Override
+    @Transactional
+    public TokenResponse loginWithGoogle(GoogleLoginRequest request) {
+        log.info("Iniciando sesión con Google...");
+        // 1. Validar Google Token
+        GoogleIdToken.Payload payload = googleAuthService.verifyToken(request.idToken());
+        String email = payload.getEmail();
+        String name = (String) payload.get("name");
+
+        // 2. Buscar si ya existe el usuario activo (no eliminado)
+        UserEntity user = userRepository.findByEmailAndDeletedAtIsNull(email)
+                .orElseGet(() -> {
+                    log.info("Usuario de Google no registrado. Registrando automáticamente: {}", email);
+                    // Registrar nuevo usuario auto-verificado y activo
+                    UserEntity newUser = UserEntity.builder()
+                            .name(toTitleCase(name))
+                            .email(email)
+                            // Generamos una contraseña aleatoria de un solo uso para cumplir con NOT NULL
+                            .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
+                            .status(UserStatusEnum.ACTIVO.getValue())
+                            .isVerified(true)
+                            .roles(RoleEnum.CLIENT.name())
+                            .build();
+                    return userRepository.save(newUser);
+                });
+
+        // 3. Si estaba registrado pero INACTIVO, lo activamos
+        if (user.getStatusEnum() == UserStatusEnum.INACTIVO || !user.isVerified()) {
+            log.info("Activando cuenta del usuario {} autenticado con Google", email);
+            user.setStatusEnum(UserStatusEnum.ACTIVO);
+            user.setVerified(true);
+            user.setDeletedAt(null);
+        }
+
+        user.setLastLoginAt(OffsetDateTime.now());
+        userRepository.save(user);
+
+        log.info("Login con Google exitoso para usuario: {} (id={})", user.getEmail(), user.getId());
+        return generateAndSaveTokenPair(user);
+    }
+
+    @Override
+    @Transactional
+    public MessageResponse initiateDeleteAccount(UUID userId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario", userId));
+
+        // 1. Rate-limit global de OTP por email
+        otpComponent.checkAndIncrementOtpRate(user.getEmail());
+
+        // 2. Verificar cooldown
+        if (otpComponent.isCooldownActive(userId)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Debes esperar antes de volver a solicitar el código de verificación.");
+        }
+
+        // 3. Generar OTP y almacenar en Redis
+        String otpCode = otpComponent.generateAndStoreOtp(userId);
+
+        // 4. Publicar evento para envío de email
+        deleteAccountEmailPublisher.publishDeleteAccountEmail(user.getName(), user.getEmail(), otpCode);
+
+        log.info("Proceso de eliminación de cuenta iniciado para: {} (id={})", user.getEmail(), userId);
+        return new MessageResponse("Se ha enviado un código de verificación a tu correo electrónico.");
+    }
+
+    @Override
+    @Transactional
+    public MessageResponse verifyDeleteAccount(UUID userId, VerifyDeleteRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario", userId));
+
+        // 1. Validar OTP en Redis
+        if (!otpComponent.validateOtp(userId, request.otpCode())) {
+            throw new BusinessException("El código OTP es incorrecto o ha expirado.");
+        }
+
+        // 2. Eliminar tokens de refresco del usuario
+        refreshTokenRepository.revokeAllActiveByUserId(userId);
+
+        // 3. Borrado lógico: desactivar usuario y registrar fecha de baja
+        user.setStatusEnum(UserStatusEnum.INACTIVO);
+        user.setVerified(false);
+        user.setDeletedAt(OffsetDateTime.now());
+        userRepository.save(user);
+
+        log.info("Cuenta desactivada (soft delete) para el usuario: {} (id={})", user.getEmail(), userId);
+        return new MessageResponse("Tu cuenta ha sido eliminada permanentemente.");
     }
 }

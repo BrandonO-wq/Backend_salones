@@ -1,6 +1,8 @@
 package com.sportsbooking.mainapi.controller;
 
 import com.sportsbooking.mainapi.components.JwtProviderComponent;
+import com.sportsbooking.mainapi.dto.auth.request.GoogleLoginRequest;
+import com.sportsbooking.mainapi.dto.auth.request.VerifyDeleteRequest;
 import com.sportsbooking.mainapi.dto.auth.request.ForgotPasswordRequest;
 import com.sportsbooking.mainapi.dto.auth.request.LoginRequest;
 import com.sportsbooking.mainapi.dto.auth.request.RefreshTokenRequest;
@@ -324,6 +326,78 @@ public class AuthController {
             @AuthenticationPrincipal UUID userId
     ) {
         return ResponseEntity.ok(authService.getMe(userId));
+    }
+
+    // ─────────────────────────────────────────────
+    // POST /auth/google
+    // ─────────────────────────────────────────────
+
+    /**
+     * Autentica a un usuario usando Google Sign-In (ID Token).
+     *
+     * @param request contiene el token de Google.
+     * @return HTTP 200 con {@link TokenResponse}.
+     */
+    @PostMapping("/google")
+    @Operation(
+        summary = "Login con Google",
+        description = "Autentica a un usuario usando Google OAuth2 ID Token. Registra al usuario si no existe."
+    )
+    @ApiResponse(responseCode = "200", description = "Login con Google exitoso", content = @Content(schema = @Schema(implementation = TokenResponse.class)))
+    @ApiResponse(responseCode = "400", description = "Token de Google inválido o expirado", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<TokenResponse> loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
+        return ResponseEntity.ok(authService.loginWithGoogle(request));
+    }
+
+    // ─────────────────────────────────────────────
+    // POST /auth/delete
+    // ─────────────────────────────────────────────
+
+    /**
+     * Inicia la eliminación de la cuenta del usuario enviando un código OTP.
+     * Requiere autenticación JWT.
+     *
+     * @param userId ID del usuario autenticado (extraído del JWT).
+     * @return HTTP 200 con mensaje de confirmación de envío.
+     */
+    @PostMapping("/delete")
+    @Operation(
+        summary = "Iniciar eliminación de cuenta",
+        description = "Envía un código OTP de verificación al correo del usuario para confirmar la eliminación de la cuenta.",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponse(responseCode = "200", description = "Código OTP enviado", content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    @ApiResponse(responseCode = "401", description = "No autorizado", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<MessageResponse> initiateDelete(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(authService.initiateDeleteAccount(userId));
+    }
+
+    // ─────────────────────────────────────────────
+    // POST /auth/verify-delete
+    // ─────────────────────────────────────────────
+
+    /**
+     * Confirma y ejecuta la eliminación definitiva de la cuenta.
+     * Requiere autenticación JWT.
+     *
+     * @param userId  ID del usuario autenticado (extraído del JWT).
+     * @param request contiene el código OTP.
+     * @return HTTP 200 con mensaje de éxito de eliminación.
+     */
+    @PostMapping("/verify-delete")
+    @Operation(
+        summary = "Confirmar eliminación de cuenta",
+        description = "Valida el código OTP y elimina la cuenta del usuario de manera permanente.",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponse(responseCode = "200", description = "Cuenta eliminada de manera permanente", content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    @ApiResponse(responseCode = "400", description = "OTP incorrecto o expirado", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "401", description = "No autorizado", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<MessageResponse> verifyDelete(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody VerifyDeleteRequest request
+    ) {
+        return ResponseEntity.ok(authService.verifyDeleteAccount(userId, request));
     }
 
 }

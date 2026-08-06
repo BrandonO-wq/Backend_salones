@@ -39,7 +39,7 @@ public class HostDebtsController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
     public ResponseEntity<List<HostDebtResponseDto>> getHostDebts(
-            @RequestParam(required = false) UUID hostId,
+            @RequestParam(name = "hostId", required = false) UUID hostId,
             @AuthenticationPrincipal UUID loggedInUserId,
             Authentication authentication) {
 
@@ -52,7 +52,7 @@ public class HostDebtsController {
 
     @GetMapping("/venue/{venueId}/commission")
     @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
-    public ResponseEntity<VenueCommissionResponse> getVenueCurrentCommission(@PathVariable UUID venueId) {
+    public ResponseEntity<VenueCommissionResponse> getVenueCurrentCommission(@PathVariable("venueId") UUID venueId) {
         return ResponseEntity.ok(commissionService.calculateCurrentCycleCommission(venueId));
     }
 
@@ -101,8 +101,8 @@ public class HostDebtsController {
     @Tag(name = "Host Debts", description = "Endpoint para activar/desactivar un venue")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<MessageResponse> toggleVenueStatus(
-            @PathVariable UUID venueId,
-            @RequestParam boolean active) {
+            @PathVariable("venueId") UUID venueId,
+            @RequestParam("active") boolean active) {
         return ResponseEntity.ok(commissionService.toggleVenueStatus(venueId, active));
     }
 
@@ -110,7 +110,7 @@ public class HostDebtsController {
     @Tag(name = "Host Debts", description = "Endpoint para habilitar un venue")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<MessageResponse> enableVenue(
-            @PathVariable UUID venueId) {
+            @PathVariable("venueId") UUID venueId) {
         return ResponseEntity.ok(commissionService.enableVenue(venueId));
     }
 
@@ -118,7 +118,7 @@ public class HostDebtsController {
     @Tag(name = "Host Debts", description = "Endpoint para obtener el estado de inhabilitación de un venue")
     @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> getVenueDisabledStatus(
-            @PathVariable UUID venueId) {
+            @PathVariable("venueId") UUID venueId) {
         return ResponseEntity.ok(commissionService.getVenueDisabledStatus(venueId));
     }
 

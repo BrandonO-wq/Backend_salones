@@ -18,5 +18,7 @@ public record HostBookingSummaryResponse(
                 List<String> eventTypes,
                 double avgRating,
                 long reviewCount,
-                List<String> schedules) {
+                List<String> schedules,
+                Integer status,
+                String voucherUrl) {
 }

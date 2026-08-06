@@ -111,6 +111,9 @@ public class UserEntity {
     @Column(name = "ubigeo")
     private String ubigeo;
 
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     // ─────────────────────────────────────────────
     // Métodos auxiliares para manejo de roles
     // ─────────────────────────────────────────────

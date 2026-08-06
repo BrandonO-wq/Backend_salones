@@ -111,7 +111,7 @@ public class BookingController {
     @Operation(summary = "Liberar bloqueo manualmente")
     public ResponseEntity<Void> releaseHold(
             @AuthenticationPrincipal UUID userId,
-            @PathVariable String holdId) {
+            @PathVariable("holdId") String holdId) {
         bookingService.releaseHold(userId, holdId);
         return ResponseEntity.ok().build();
     }

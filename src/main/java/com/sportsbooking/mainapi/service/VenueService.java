@@ -8,6 +8,7 @@ import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueDetailedReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
 import org.springframework.core.io.Resource;
@@ -122,6 +123,13 @@ public interface VenueService {
      * @return estadísticas de salones y propietarios.
      */
     VenueStatsResponseDto getVenueStats();
+
+    /**
+     * Retorna un reporte detallado de los salones con información de su dueño, ingresos, comisiones, ganancias y ubigeo.
+     *
+     * @return lista de salones con su reporte financiero y de reservas detallado.
+     */
+    List<VenueDetailedReportDto> getVenuesDetailedReport();
 
     /**
      * Retorna el listado de salones de un host específico con información de

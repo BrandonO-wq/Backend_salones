@@ -22,7 +22,7 @@ public class HostDetailController {
     @Operation(summary = "Obtener detalles del Host", description = "Retorna el perfil del host, cantidad de salones, reservas, calificación promedio y estado de deuda.")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
-    public ResponseEntity<HostDetailResponseDto> getHostDetail(@PathVariable UUID id) {
+    public ResponseEntity<HostDetailResponseDto> getHostDetail(@PathVariable("id") UUID id) {
         return ResponseEntity.ok(hostDetailService.getHostDetail(id));
     }
 }

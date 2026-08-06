@@ -10,6 +10,7 @@ import com.sportsbooking.mainapi.dto.venue.request.SearchVenuesRequest;
 import com.sportsbooking.mainapi.dto.venue.request.UpdateVenueRequest;
 import com.sportsbooking.mainapi.dto.venue.response.VenueBookingReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto;
+import com.sportsbooking.mainapi.dto.venue.response.VenueDetailedReportDto;
 import com.sportsbooking.mainapi.dto.venue.response.VenueDetailResponse;
 import com.sportsbooking.mainapi.dto.venue.response.HostVenueResponseDto;
 import com.sportsbooking.mainapi.enums.ScheduleStatus;
@@ -38,9 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -828,6 +831,158 @@ public class VenueServiceImpl implements VenueService {
     public VenueStatsResponseDto getVenueStats() {
         log.info("[Venue] Obteniendo estadísticas de salones y propietarios");
         return venueRepository.getVenueStats();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VenueDetailedReportDto> getVenuesDetailedReport() {
+        log.info("[Venue] Generando reporte detallado de salones");
+        List<VenueEntity> venues = venueRepository.findAll();
+        if (venues.isEmpty()) {
+            return List.of();
+        }
+
+        // 1. Obtener todos los usuarios y mapearlos en memoria
+        List<UserEntity> users = userRepository.findAll();
+        Map<UUID, UserEntity> userMap = users.stream()
+                .filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(UserEntity::getId, Function.identity(), (a, b) -> a));
+
+        // 2. Obtener todas las reservas y agruparlas por venueId
+        List<BookingEntity> bookings = bookingRepository.findAll();
+        Map<UUID, List<BookingEntity>> bookingsByVenue = bookings.stream()
+                .filter(b -> b.getVenueId() != null)
+                .collect(Collectors.groupingBy(BookingEntity::getVenueId));
+
+        // 3. Obtener comisión del parámetro 57
+        BigDecimal commissionRate = BigDecimal.valueOf(0.10); // default 10%
+        try {
+            Optional<ParameterEntity> commissionParamOpt = parameterRepository.findById(57);
+            if (commissionParamOpt.isPresent() && commissionParamOpt.get().getValue() != null) {
+                commissionRate = BigDecimal.valueOf(commissionParamOpt.get().getValue());
+            }
+        } catch (Exception e) {
+            log.warn("No se pudo cargar el parámetro 57 (comisión), usando default 10%: {}", e.getMessage());
+        }
+
+        List<VenueDetailedReportDto> report = new ArrayList<>();
+
+        for (VenueEntity venue : venues) {
+            UUID venueId = venue.getId();
+            UserEntity owner = userMap.get(venue.getHostUserId());
+
+            String ownerName = owner != null ? owner.getName() : "Desconocido";
+            String ownerEmail = owner != null ? owner.getEmail() : "Desconocido";
+            OffsetDateTime ownerCreatedAt = owner != null ? owner.getCreatedAt() : null;
+
+            String ubigeoText = ubigeoService.getUbigeoText(venue.getUbigeo());
+
+            String operatingHours = "No especificado";
+            if (venue.getPricingStartTime() != null && venue.getPricingEndTime() != null) {
+                operatingHours = venue.getPricingStartTime().toString() + " - " + venue.getPricingEndTime().toString();
+            }
+
+            List<BookingEntity> venueBookings = bookingsByVenue.getOrDefault(venueId, List.of());
+            long bookingsCount = venueBookings.size();
+
+            // Filtrar reservas completadas/confirmadas para ingresos/comisiones/ganancias
+            BigDecimal totalIncome = venueBookings.stream()
+                    .filter(b -> b.getStatus() == 3 || b.getStatus() == 4) // CONFIRMED = 3, COMPLETED = 4
+                    .map(BookingEntity::getTotalAmount)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal totalCommissions = totalIncome.multiply(commissionRate);
+            BigDecimal totalEarnings = totalIncome.subtract(totalCommissions);
+
+            LocalDate latestBookingDate = venueBookings.stream()
+                    .map(BookingEntity::getBookingDate)
+                    .filter(java.util.Objects::nonNull)
+                    .max(LocalDate::compareTo)
+                    .orElse(null);
+
+             // Mapear reservas individuales detalladas
+             List<VenueDetailedReportDto.BookingDetailReportDto> bookingDetails = new ArrayList<>();
+             for (BookingEntity b : venueBookings) {
+                 UserEntity client = userMap.get(b.getClientUserId());
+                 String clientName = client != null ? client.getName() : "Desconocido";
+                 String clientEmail = client != null ? client.getEmail() : "Desconocido";
+ 
+                 String bookingHours = getBookingTimeSlotHelper(b.getDetails());
+ 
+                 BigDecimal bookingAmount = b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO;
+                 BigDecimal bookingCommission = BigDecimal.ZERO;
+                 BigDecimal bookingEarnings = BigDecimal.ZERO;
+ 
+                 if (b.getStatus() == 3 || b.getStatus() == 4) { // CONFIRMED = 3, COMPLETED = 4
+                     bookingCommission = bookingAmount.multiply(commissionRate);
+                     bookingEarnings = bookingAmount.subtract(bookingCommission);
+                 }
+ 
+                 bookingDetails.add(VenueDetailedReportDto.BookingDetailReportDto.builder()
+                         .bookingId(b.getId())
+                         .bookingDate(b.getBookingDate())
+                         .createdAt(b.getCreatedAt())
+                         .bookingHours(bookingHours)
+                         .totalAmount(bookingAmount)
+                         .commission(bookingCommission)
+                         .earnings(bookingEarnings)
+                         .status(b.getStatus())
+                         .clientName(clientName)
+                         .clientEmail(clientEmail)
+                         .build());
+             }
+
+            report.add(VenueDetailedReportDto.builder()
+                    .ownerName(ownerName)
+                    .ownerEmail(ownerEmail)
+                    .ownerCreatedAt(ownerCreatedAt)
+                    .venueId(venueId)
+                    .venueName(venue.getName())
+                    .venueCreatedAt(venue.getCreatedAt())
+                    .ubigeo(venue.getUbigeo())
+                    .ubigeoText(ubigeoText)
+                    .operatingHours(operatingHours)
+                    .bookingsCount(bookingsCount)
+                    .totalIncome(totalIncome)
+                    .totalCommissions(totalCommissions)
+                    .totalEarnings(totalEarnings)
+                    .latestBookingDate(latestBookingDate)
+                    .bookings(bookingDetails)
+                    .build());
+        }
+
+        return report;
+    }
+
+    private String getBookingTimeSlotHelper(List<BookingDetailEntity> details) {
+        if (details == null || details.isEmpty())
+            return "";
+        List<BookingDetailEntity> sorted = new java.util.ArrayList<>(details);
+        sorted.sort(java.util.Comparator.comparing(BookingDetailEntity::getStartTime));
+
+        java.time.format.DateTimeFormatter timeFormatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+        java.util.List<String> ranges = new java.util.ArrayList<>();
+
+        LocalTime currentStart = sorted.get(0).getStartTime();
+        LocalTime currentEnd = sorted.get(0).getEndTime();
+
+        for (int i = 1; i < sorted.size(); i++) {
+            BookingDetailEntity current = sorted.get(i);
+            if (current.getStartTime().equals(currentEnd)) {
+                // Son consecutivos
+                currentEnd = current.getEndTime();
+            } else {
+                // Se rompió la secuencia
+                ranges.add(currentStart.format(timeFormatter) + " - " + currentEnd.format(timeFormatter));
+                currentStart = current.getStartTime();
+                currentEnd = current.getEndTime();
+            }
+        }
+        // Agregamos el último rango formado
+        ranges.add(currentStart.format(timeFormatter) + " - " + currentEnd.format(timeFormatter));
+
+        return String.join(", ", ranges);
     }
 
     @Override

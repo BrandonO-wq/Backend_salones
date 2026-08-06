@@ -1,5 +1,7 @@
 package com.sportsbooking.mainapi.service;
 
+import com.sportsbooking.mainapi.dto.auth.request.GoogleLoginRequest;
+import com.sportsbooking.mainapi.dto.auth.request.VerifyDeleteRequest;
 import com.sportsbooking.mainapi.dto.auth.request.ForgotPasswordRequest;
 import com.sportsbooking.mainapi.dto.auth.request.LoginRequest;
 import com.sportsbooking.mainapi.dto.auth.request.RefreshTokenRequest;
@@ -135,4 +137,30 @@ public interface AuthService {
      * @return datos del usuario: id, nombre, email y roles.
      */
     MeResponse getMe(UUID userId);
+
+    /**
+     * Autentica un usuario a través de Google OAuth2 (ID Token).
+     * Si el usuario no existe, se registra automáticamente como ACTIVO.
+     *
+     * @param request contiene el {@code idToken} de Google.
+     * @return par de tokens {@code accessToken} y {@code refreshToken}.
+     */
+    TokenResponse loginWithGoogle(GoogleLoginRequest request);
+
+    /**
+     * Inicia el proceso de eliminación de cuenta del usuario, generando y enviando un OTP.
+     *
+     * @param userId ID del usuario autenticado.
+     * @return mensaje de confirmación de envío.
+     */
+    MessageResponse initiateDeleteAccount(UUID userId);
+
+    /**
+     * Confirma y finaliza la eliminación de la cuenta usando el código OTP.
+     *
+     * @param userId  ID del usuario autenticado.
+     * @param request contiene el código OTP.
+     * @return mensaje de confirmación del borrado.
+     */
+    MessageResponse verifyDeleteAccount(UUID userId, VerifyDeleteRequest request);
 }
