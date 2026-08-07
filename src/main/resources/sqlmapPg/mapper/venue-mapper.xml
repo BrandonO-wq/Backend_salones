@@ -211,8 +211,7 @@
             ORDER BY vp.created_at ASC
             LIMIT 1
         ) p ON true
-        WHERE v.status = 1
-          AND v.host_user_id = #{hostUserId}
+        WHERE v.host_user_id = #{hostUserId}
         ORDER BY v.created_at DESC
     </select>
 

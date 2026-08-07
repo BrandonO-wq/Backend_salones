@@ -3,8 +3,8 @@ package com.sportsbooking.mainapi.jpa.entity.enums;
 /**
  * Estado lógico de Venue en sistema.
  * <ul>
- *     <li>INACTIVE (0) - Equivalente a eliminado (Soft Delete) o sin publicar.</li>
- *     <li>ACTIVE (1) - Venue operativo y visible.</li>
+ * <li>INACTIVE (0) - Equivalente a eliminado (Soft Delete) o sin publicar.</li>
+ * <li>ACTIVE (1) - Venue operativo y visible.</li>
  * </ul>
  */
 public enum VenueStatus {
@@ -22,7 +22,8 @@ public enum VenueStatus {
     }
 
     public static VenueStatus fromValue(Integer value) {
-        if (value == null) return null;
+        if (value == null)
+            return null;
         for (VenueStatus status : values()) {
             if (status.value == value) {
                 return status;
