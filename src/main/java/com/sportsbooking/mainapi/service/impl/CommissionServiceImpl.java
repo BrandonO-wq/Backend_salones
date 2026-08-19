@@ -14,6 +14,7 @@ import com.sportsbooking.mainapi.jpa.entity.UserEntity;
 import com.sportsbooking.mainapi.jpa.entity.VenueEntity;
 import com.sportsbooking.mainapi.jpa.entity.enums.BookingStatus;
 import com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus;
+import com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus;
 import com.sportsbooking.mainapi.jpa.repository.BookingRepository;
 import com.sportsbooking.mainapi.jpa.repository.HostDebtsRepository;
 import com.sportsbooking.mainapi.jpa.repository.ParameterRepository;
@@ -551,32 +552,45 @@ public class CommissionServiceImpl implements CommissionService {
                                                 .orElse(0L);
                         }
 
+                        boolean isActive = venue.getStatus() == VenueStatus.ACTIVE;
+
                         double commissionAmount = 0.0;
                         double totalIncome = 0.0;
                         OffsetDateTime deadline = null;
 
-                        if (!unpaidDebts.isEmpty()) {
-                                commissionAmount = unpaidDebts.stream()
-                                                .mapToDouble(d -> d.getCommissionAmount() != null ? d.getCommissionAmount().doubleValue() : 0.0)
-                                                .sum();
-                                totalIncome = unpaidDebts.stream()
-                                                .mapToDouble(d -> d.getTotalIncome() != null ? d.getTotalIncome().doubleValue() : 0.0)
-                                                .sum();
-                                deadline = unpaidDebts.stream()
-                                                .map(HostDebts::getDeadline)
-                                                .filter(d -> d != null)
-                                                .min(OffsetDateTime::compareTo)
-                                                .orElse(null);
-                        } else if (!venueDebts.isEmpty()) {
-                                HostDebts latestDebt = venueDebts.stream()
-                                                .max((d1, d2) -> {
-                                                        if (d1.getCycleEnd() == null || d2.getCycleEnd() == null) return 0;
-                                                        return d1.getCycleEnd().compareTo(d2.getCycleEnd());
-                                                }).orElse(null);
-                                if (latestDebt != null) {
-                                        commissionAmount = latestDebt.getCommissionAmount() != null ? latestDebt.getCommissionAmount().doubleValue() : 0.0;
-                                        totalIncome = latestDebt.getTotalIncome() != null ? latestDebt.getTotalIncome().doubleValue() : 0.0;
-                                        deadline = latestDebt.getDeadline();
+                        if (isActive) {
+                                VenueCommissionResponse currentCommission = calculateCurrentCycleCommission(venue.getId());
+                                if (currentCommission != null) {
+                                        commissionAmount = currentCommission.getCommissionAmount() != null 
+                                                        ? currentCommission.getCommissionAmount().doubleValue() : 0.0;
+                                        totalIncome = currentCommission.getTotalIncome() != null 
+                                                        ? currentCommission.getTotalIncome().doubleValue() : 0.0;
+                                        deadline = currentCommission.getDeadline();
+                                }
+                        } else {
+                                if (!unpaidDebts.isEmpty()) {
+                                        commissionAmount = unpaidDebts.stream()
+                                                        .mapToDouble(d -> d.getCommissionAmount() != null ? d.getCommissionAmount().doubleValue() : 0.0)
+                                                        .sum();
+                                        totalIncome = unpaidDebts.stream()
+                                                        .mapToDouble(d -> d.getTotalIncome() != null ? d.getTotalIncome().doubleValue() : 0.0)
+                                                        .sum();
+                                        deadline = unpaidDebts.stream()
+                                                        .map(HostDebts::getDeadline)
+                                                        .filter(d -> d != null)
+                                                        .min(OffsetDateTime::compareTo)
+                                                        .orElse(null);
+                                } else if (!venueDebts.isEmpty()) {
+                                        HostDebts latestDebt = venueDebts.stream()
+                                                        .max((d1, d2) -> {
+                                                                if (d1.getCycleEnd() == null || d2.getCycleEnd() == null) return 0;
+                                                                return d1.getCycleEnd().compareTo(d2.getCycleEnd());
+                                                        }).orElse(null);
+                                        if (latestDebt != null) {
+                                                commissionAmount = latestDebt.getCommissionAmount() != null ? latestDebt.getCommissionAmount().doubleValue() : 0.0;
+                                                totalIncome = latestDebt.getTotalIncome() != null ? latestDebt.getTotalIncome().doubleValue() : 0.0;
+                                                deadline = latestDebt.getDeadline();
+                                        }
                                 }
                         }
 

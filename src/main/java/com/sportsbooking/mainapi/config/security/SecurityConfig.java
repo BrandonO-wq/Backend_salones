@@ -47,7 +47,7 @@ public class SecurityConfig {
         private final CustomAuthEntryPoint customAuthEntryPoint;
         private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
-        @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080,https://oryzentprueba.com,https://www.oryzentprueba.com}")
+        @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080,https://oryzentprueba.com,https://www.oryzentprueba.com,https://intranet.oryzentprueba.com,https://www.intranet.oryzentprueba.com}")
         private String[] allowedOrigins;
 
         /** Rutas públicas que no requieren autenticación. */
