@@ -19,7 +19,7 @@ public interface BookingService {
         SlotValidationResponse validateSlotAvailability(HoldSlotsRequest request);
 
         BookingResponse confirmBooking(UUID userId, String holdId, MultipartFile voucher, Integer idPaymentMethod,
-                        String description);
+                        String description, List<Integer> sportsId);
 
         org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> getVoucherResource(UUID userId,
                         UUID bookingId);

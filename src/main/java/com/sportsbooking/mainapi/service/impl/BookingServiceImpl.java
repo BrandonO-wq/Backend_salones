@@ -282,7 +282,7 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse confirmBooking(UUID userId, String holdId, MultipartFile voucher, Integer idPaymentMethod,
-            String description) {
+            String description, List<Integer> sportsId) {
         String holdKey = HOLD_KEY_PREFIX + holdId;
         String metaStr = redisTemplate.opsForValue().get(holdKey);
         if (metaStr == null) {
@@ -370,6 +370,12 @@ public class BookingServiceImpl implements BookingService {
             totalAmount = totalAmount.add(price);
         }
 
+        Integer[] finalSportsId = (sportsId != null && !sportsId.isEmpty())
+                ? sportsId.toArray(new Integer[0])
+                : (venue.getIdSports() != null ? venue.getIdSports() : new Integer[0]);
+
+        log.info("[confirmBooking] Received sportsId: {}, finalSportsId assigned to entity: {}", sportsId, java.util.Arrays.toString(finalSportsId));
+
         BookingEntity booking = BookingEntity.builder()
                 .venueId(venue.getId())
                 .clientUserId(userId)
@@ -378,7 +384,7 @@ public class BookingServiceImpl implements BookingService {
                 .totalAmount(totalAmount)
                 .status(isSelfHost ? BookingStatus.CONFIRMED.getValue() : BookingStatus.PENDING.getValue())
                 .isSelfHost(isSelfHost)
-                .sportsId(venue.getIdSports())
+                .sportsId(finalSportsId)
                 .basePriceDay(basePriceDay)
                 .basePriceNight(basePriceNight)
                 .idPaymentMethod(idPaymentMethod)
@@ -418,6 +424,11 @@ public class BookingServiceImpl implements BookingService {
                 savedBooking.getId(),
                 java.util.Map.of("route", RouteConstants.HOST_RESERVATIONS_STANDALONE));
 
+        List<Integer> bSports = (savedBooking.getSportsId() != null && savedBooking.getSportsId().length > 0)
+                ? java.util.Arrays.asList(savedBooking.getSportsId())
+                : (venue.getIdSports() != null ? java.util.Arrays.asList(venue.getIdSports()) : java.util.List.of());
+        String resolvedSportName = resolveSportNameFromMap(bSports, getSportsParameterMap());
+
         return BookingResponse.builder()
                 .id(savedBooking.getId())
                 .venueId(savedBooking.getVenueId())
@@ -428,6 +439,8 @@ public class BookingServiceImpl implements BookingService {
                 .status(savedBooking.getStatus())
                 .idPaymentMethod(savedBooking.getIdPaymentMethod())
                 .bookingCode(savedBooking.getBookingCode())
+                .sportsId(bSports)
+                .sportName(resolvedSportName)
                 .build();
     }
 
@@ -464,6 +477,11 @@ public class BookingServiceImpl implements BookingService {
                 booking.getId(),
                 Map.of("route", RouteConstants.HOST_RESERVATIONS_STANDALONE));
 
+        List<Integer> bSports = (booking.getSportsId() != null && booking.getSportsId().length > 0)
+                ? java.util.Arrays.asList(booking.getSportsId())
+                : (venue.getIdSports() != null ? java.util.Arrays.asList(venue.getIdSports()) : java.util.List.of());
+        String resolvedSportName = resolveSportNameFromMap(bSports, getSportsParameterMap());
+
         return BookingResponse.builder()
                 .id(booking.getId())
                 .venueId(booking.getVenueId())
@@ -474,6 +492,8 @@ public class BookingServiceImpl implements BookingService {
                 .status(booking.getStatus())
                 .idPaymentMethod(booking.getIdPaymentMethod())
                 .bookingCode(booking.getBookingCode())
+                .sportsId(bSports)
+                .sportName(resolvedSportName)
                 .build();
     }
 
@@ -481,6 +501,11 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingById(UUID bookingId) {
         BookingEntity booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        List<Integer> bSports = (booking.getSportsId() != null && booking.getSportsId().length > 0)
+                ? java.util.Arrays.asList(booking.getSportsId())
+                : java.util.List.of();
+        String resolvedSportName = resolveSportNameFromMap(bSports, getSportsParameterMap());
+
         return BookingResponse.builder()
                 .id(booking.getId())
                 .venueId(booking.getVenueId())
@@ -491,6 +516,8 @@ public class BookingServiceImpl implements BookingService {
                 .status(booking.getStatus())
                 .idPaymentMethod(booking.getIdPaymentMethod())
                 .bookingCode(booking.getBookingCode())
+                .sportsId(bSports)
+                .sportName(resolvedSportName)
                 .build();
     }
 
@@ -917,6 +944,8 @@ public class BookingServiceImpl implements BookingService {
         LocalDate currentDate = DateUtilities.currentLocalDate();
         LocalTime currentTime = DateUtilities.currentLocalTime();
 
+        Map<Integer, String> sportsMap = getSportsParameterMap();
+
         for (Object[] row : results) {
             BookingEntity booking = (BookingEntity) row[0];
             VenueEntity venue = (VenueEntity) row[1];
@@ -948,6 +977,12 @@ public class BookingServiceImpl implements BookingService {
                 }
             }
 
+            List<Integer> bSports = (booking.getSportsId() != null && booking.getSportsId().length > 0)
+                    ? java.util.Arrays.asList(booking.getSportsId())
+                    : (venue.getIdSports() != null ? java.util.Arrays.asList(venue.getIdSports()) : java.util.List.of());
+
+            String resolvedSportName = resolveSportNameFromMap(bSports, sportsMap);
+
             ClientBookingResponse response = ClientBookingResponse.builder()
                     .id(booking.getId())
                     .venueName(venue.getName())
@@ -961,10 +996,10 @@ public class BookingServiceImpl implements BookingService {
                     .address(venue.getAddress())
                     .ubigeo(ubigeoService.getUbigeoText(venue.getUbigeo()))
                     .contactNumber(venue.getContactNumber())
-                    .venueSportIds(java.util.Arrays.asList(venue.getIdSports()))
+                    .venueSportIds(bSports)
                     .price(booking.getTotalAmount())
                     .status(booking.getStatus())
-                    .sportName("Fútbol") // Parameter can be fetched if needed, but placeholder is fine for now
+                    .sportName(resolvedSportName)
                     .isExpired(isExpired)
                     .userReviewPoints(points)
                     .userReviewComment(comment)
@@ -972,6 +1007,34 @@ public class BookingServiceImpl implements BookingService {
             distinctBookings.put(booking.getId(), response);
         }
         return new java.util.ArrayList<>(distinctBookings.values());
+    }
+
+    private Map<Integer, String> getSportsParameterMap() {
+        Map<Integer, String> sportsMap = new HashMap<>();
+        try {
+            List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> params = parameterService.getByParent(1);
+            if (params != null) {
+                for (com.sportsbooking.mainapi.dto.parameter.ParameterDto p : params) {
+                    sportsMap.put(p.getIdParam(), p.getChildName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error cargando mapa de deportes: {}", e.getMessage());
+        }
+        return sportsMap;
+    }
+
+    private String resolveSportNameFromMap(List<Integer> sportsIds, Map<Integer, String> sportsMap) {
+        if (sportsIds == null || sportsIds.isEmpty()) {
+            return "Fútbol";
+        }
+        List<String> names = new ArrayList<>();
+        for (Integer sId : sportsIds) {
+            if (sId != null && sportsMap.containsKey(sId)) {
+                names.add(sportsMap.get(sId));
+            }
+        }
+        return names.isEmpty() ? "Fútbol" : String.join(", ", names);
     }
 
     @Data

@@ -25,7 +25,7 @@ public interface BookingService {
     SlotValidationResponse validateSlotAvailability(HoldSlotsRequest request);
 
     BookingResponse confirmBooking(UUID userId, String holdId, MultipartFile voucher, Integer idPaymentMethod,
-            String description);
+            String description, List<Integer> sportsId);
 
     BookingResponse uploadVoucher(UUID userId, UUID bookingId, MultipartFile voucher);
 

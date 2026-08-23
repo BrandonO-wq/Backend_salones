@@ -118,8 +118,8 @@ public class ReviewController {
         @GetMapping
         public ResponseEntity<PaginatedResponse<ReviewResponse>> getReviews(
                         @PathVariable("venueId") UUID venueId,
-                        @RequestParam(defaultValue = "0") int page,
-                        @RequestParam(defaultValue = "10") int size) {
+                        @RequestParam(name = "page", defaultValue = "0") int page,
+                        @RequestParam(name = "size", defaultValue = "10") int size) {
                 PaginatedResponse<ReviewResponse> reviews = reviewService.getReviewsByVenue(venueId,
                                 PageRequest.of(page, size));
                 return ResponseEntity.ok(reviews);

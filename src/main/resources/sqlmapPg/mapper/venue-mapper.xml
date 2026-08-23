@@ -12,9 +12,9 @@
         <result property="longitude" column="longitude"/>
         <result property="ubigeo" column="ubigeo"/>
         <result property="illuminated" column="illuminated"/>
+        <result property="basePrice" column="basePrice"/>
+        <result property="extraHourPrice" column="extraHourPrice"/>
         <result property="minPrice" column="minPrice"/>
-        <result property="priceDay" column="priceDay"/>
-        <result property="priceNight" column="priceNight"/>
         <result property="sports" column="sports" typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
         <result property="surfaces" column="surfaces" typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
         <result property="avgRating" column="avgRating"/>
@@ -43,6 +43,7 @@
             p.url                            AS photoUrl,
             v.max_capacity                   AS maxCapacity,
             v.base_price                     AS basePrice,
+            (SELECT MIN(precio_hora_extra) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS extraHourPrice,
             (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice
         FROM venues v
         LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
@@ -117,6 +118,7 @@
             p.url                            AS photoUrl,
             v.max_capacity                   AS maxCapacity,
             v.base_price                     AS basePrice,
+            (SELECT MIN(precio_hora_extra) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS extraHourPrice,
             (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice
         FROM venues v
         LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
@@ -192,9 +194,8 @@
             p.url                            AS photoUrl,
             v.max_capacity                   AS maxCapacity,
             v.base_price                     AS basePrice,
-            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice,
-            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1 AND av.schedule_type = 1) AS priceDay,
-            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1 AND av.schedule_type = 2) AS priceNight
+            (SELECT MIN(precio_hora_extra) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS extraHourPrice,
+            (SELECT MIN(price) FROM available_venues av WHERE av.venue_id = v.id AND av.status = 1) AS minPrice
         FROM venues v
         LEFT JOIN ubigeo_peru tbl_u ON v.ubigeo = tbl_u.inei
         LEFT JOIN LATERAL (

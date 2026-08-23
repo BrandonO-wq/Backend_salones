@@ -24,13 +24,13 @@ public class VenueListItemDto {
     private Boolean illuminated;
     private String dimensions;
 
-    /** Precio de día (schedule_type = 1) */
-    private Double priceDay;
+    /** Precio base del salón (desde venues.base_price). */
+    private Double basePrice;
 
-    /** Precio de noche (schedule_type = 2) */
-    private Double priceNight;
+    /** Precio de hora extra (desde available_venues.precio_hora_extra). */
+    private Double extraHourPrice;
 
-    /** Precio mínimo extraído desde available_venues (dia/noche) */
+    /** Precio mínimo extraído desde available_venues */
     private Double minPrice;
 
     /** IDs de deportes (devuelto como array PG, mapeado por MyBatis). */
@@ -47,9 +47,6 @@ public class VenueListItemDto {
 
     /** Capacidad máxima del salón. */
     private Integer maxCapacity;
-
-    /** Precio base del salón (si aplica). */
-    private Double basePrice;
 
     /** URL de la primera foto del venue (null si no tiene). */
     private String photoUrl;

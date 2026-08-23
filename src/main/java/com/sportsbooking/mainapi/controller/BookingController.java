@@ -19,12 +19,15 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import lombok.extern.slf4j.Slf4j;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.sportsbooking.mainapi.dto.booking.response.ClientBookingResponse;
 
+@Slf4j
 @RestController
 @RequestMapping("/bookings")
 @RequiredArgsConstructor
@@ -72,10 +75,64 @@ public class BookingController {
             @AuthenticationPrincipal UUID userId,
             @RequestParam("holdId") String holdId,
             @RequestParam("idPaymentMethod") Integer idPaymentMethod,
+            @RequestParam(value = "sports_id", required = false) String rawSportsId,
+            @RequestParam(value = "eventType", required = false) String eventType,
+            @RequestParam(value = "guests", required = false) Integer guests,
+            @RequestParam(value = "paymentMethodName", required = false) String paymentMethodName,
             @RequestParam(value = "description", required = false) String description,
-            @RequestPart(value = "voucher", required = false) MultipartFile voucher) {
-        BookingResponse response = bookingService.confirmBooking(userId, holdId, voucher, idPaymentMethod, description);
+            @RequestPart(value = "voucher", required = false) MultipartFile voucher,
+            jakarta.servlet.http.HttpServletRequest request) {
+
+        List<Integer> extractedSportsId = parseSportsId(rawSportsId, request);
+        log.info("[createBooking] userId={}, holdId={}, rawSportsId='{}', extractedSportsId={}",
+                userId, holdId, rawSportsId, extractedSportsId);
+
+        BookingResponse response = bookingService.confirmBooking(userId, holdId, voucher, idPaymentMethod, description, extractedSportsId);
         return ResponseEntity.ok(response);
+    }
+
+    private List<Integer> parseSportsId(String rawSportsId, jakarta.servlet.http.HttpServletRequest request) {
+        List<Integer> result = new ArrayList<>();
+        List<String> candidates = new ArrayList<>();
+
+        if (rawSportsId != null && !rawSportsId.isBlank()) {
+            candidates.add(rawSportsId);
+        }
+
+        String[] keys = {"sports_id", "sports_id[]", "sportsId", "sportsId[]", "sports_id[0]"};
+        for (String key : keys) {
+            String[] vals = request.getParameterValues(key);
+            if (vals != null) {
+                for (String v : vals) {
+                    if (v != null && !v.isBlank()) {
+                        candidates.add(v);
+                    }
+                }
+            }
+        }
+
+        for (String raw : candidates) {
+            String str = raw.trim();
+            if (str.startsWith("[") && str.endsWith("]")) {
+                str = str.substring(1, str.length() - 1);
+            }
+            if (str.isBlank()) continue;
+
+            String[] parts = str.split(",");
+            for (String p : parts) {
+                String cleaned = p.trim().replaceAll("[\"']", "");
+                if (!cleaned.isBlank()) {
+                    try {
+                        int id = Integer.parseInt(cleaned);
+                        if (!result.contains(id)) {
+                            result.add(id);
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     @GetMapping("/{id}")

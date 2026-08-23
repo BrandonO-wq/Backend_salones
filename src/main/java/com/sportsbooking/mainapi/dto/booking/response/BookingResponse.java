@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -23,4 +24,6 @@ public class BookingResponse {
     private Integer status;
     private Integer idPaymentMethod;
     private String bookingCode;
+    private List<Integer> sportsId;
+    private String sportName;
 }

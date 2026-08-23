@@ -24,8 +24,8 @@ public class NotificationController {
     @GetMapping
     public ResponseEntity<PaginatedResponse<NotificationResponse>> getMyNotifications(
             @AuthenticationPrincipal UUID userId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(notificationService.getUserNotifications(userId, PageRequest.of(page, size)));
     }
 
