@@ -775,6 +775,7 @@ public class BookingServiceImpl implements BookingService {
                     .isExpired(isExpired)
                     .voucherUrl(b.getVoucherUrl())
                     .message(b.getDescription())
+                    .confirmedAt(b.getConfirmedAt())
                     .build();
             distinctBookings.put(b.getId(), response);
         }
