@@ -31,6 +31,8 @@ import com.sportsbooking.mainapi.jpa.repository.BookingDetailRepository;
 import com.sportsbooking.mainapi.jpa.repository.BookingRepository;
 import com.sportsbooking.mainapi.jpa.repository.UserRepository;
 import com.sportsbooking.mainapi.jpa.repository.VenueRepository;
+import com.sportsbooking.mainapi.jpa.repository.ParameterRepository;
+import com.sportsbooking.mainapi.jpa.entity.ParameterEntity;
 import com.sportsbooking.mainapi.jpa.repository.VenueReviewRepository;
 import com.sportsbooking.mainapi.jpa.entity.VenueReviewEntity;
 import com.sportsbooking.mainapi.service.BookingService;
@@ -79,6 +81,7 @@ public class BookingServiceImpl implements BookingService {
     private final com.sportsbooking.mainapi.service.ParameterService parameterService;
     private final com.sportsbooking.mainapi.service.ReviewService reviewService;
     private final UbigeoService ubigeoService;
+    private final ParameterRepository parameterRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
 
     @jakarta.annotation.PostConstruct
@@ -376,12 +379,30 @@ public class BookingServiceImpl implements BookingService {
 
         log.info("[confirmBooking] Received sportsId: {}, finalSportsId assigned to entity: {}", sportsId, java.util.Arrays.toString(finalSportsId));
 
+        Double paramValue = parameterRepository.findById(57)
+                .map(ParameterEntity::getValue)
+                .orElse(10.0);
+
+        BigDecimal commissionRateVal = BigDecimal.valueOf(paramValue);
+        BigDecimal rateMultiplier = paramValue >= 1.0
+                ? BigDecimal.valueOf(paramValue / 100.0)
+                : BigDecimal.valueOf(paramValue);
+
+        BigDecimal commissionAmountVal = totalAmount.multiply(rateMultiplier)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+
+        BigDecimal netAmountVal = totalAmount.subtract(commissionAmountVal)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+
         BookingEntity booking = BookingEntity.builder()
                 .venueId(venue.getId())
                 .clientUserId(userId)
                 .bookingDate(metadata.getDate())
                 .totalHours(metadata.getSlots().size())
                 .totalAmount(totalAmount)
+                .commissionRate(commissionRateVal)
+                .commissionAmount(commissionAmountVal)
+                .netAmount(netAmountVal)
                 .status(isSelfHost ? BookingStatus.CONFIRMED.getValue() : BookingStatus.PENDING.getValue())
                 .isSelfHost(isSelfHost)
                 .sportsId(finalSportsId)
@@ -436,6 +457,9 @@ public class BookingServiceImpl implements BookingService {
                 .bookingDate(savedBooking.getBookingDate())
                 .totalHours(savedBooking.getTotalHours())
                 .totalAmount(savedBooking.getTotalAmount())
+                .commissionRate(savedBooking.getCommissionRate())
+                .commissionAmount(savedBooking.getCommissionAmount())
+                .netAmount(savedBooking.getNetAmount())
                 .status(savedBooking.getStatus())
                 .idPaymentMethod(savedBooking.getIdPaymentMethod())
                 .bookingCode(savedBooking.getBookingCode())
@@ -489,6 +513,9 @@ public class BookingServiceImpl implements BookingService {
                 .bookingDate(booking.getBookingDate())
                 .totalHours(booking.getTotalHours())
                 .totalAmount(booking.getTotalAmount())
+                .commissionRate(booking.getCommissionRate())
+                .commissionAmount(booking.getCommissionAmount())
+                .netAmount(booking.getNetAmount())
                 .status(booking.getStatus())
                 .idPaymentMethod(booking.getIdPaymentMethod())
                 .bookingCode(booking.getBookingCode())
@@ -513,6 +540,9 @@ public class BookingServiceImpl implements BookingService {
                 .bookingDate(booking.getBookingDate())
                 .totalHours(booking.getTotalHours())
                 .totalAmount(booking.getTotalAmount())
+                .commissionRate(booking.getCommissionRate())
+                .commissionAmount(booking.getCommissionAmount())
+                .netAmount(booking.getNetAmount())
                 .status(booking.getStatus())
                 .idPaymentMethod(booking.getIdPaymentMethod())
                 .bookingCode(booking.getBookingCode())
@@ -770,6 +800,9 @@ public class BookingServiceImpl implements BookingService {
                     .clientName(clientName)
                     .clientPhone(clientPhone)
                     .amount(b.getTotalAmount())
+                    .commissionRate(b.getCommissionRate())
+                    .commissionAmount(b.getCommissionAmount())
+                    .netAmount(b.getNetAmount())
                     .status(b.getStatus())
                     .paid(b.getVoucherUrl() != null && !b.getVoucherUrl().isEmpty())
                     .isExpired(isExpired)

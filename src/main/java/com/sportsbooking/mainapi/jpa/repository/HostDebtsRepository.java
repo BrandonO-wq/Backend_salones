@@ -14,4 +14,6 @@ public interface HostDebtsRepository extends JpaRepository<HostDebts, UUID> {
     boolean existsByCycleStart(LocalDate cycleStart);
     List<HostDebts> findByStatusNot(HostDebtStatus status);
     List<HostDebts> findByHostUserIdAndStatusNot(UUID hostUserId, HostDebtStatus status);
+    java.util.Optional<HostDebts> findByVenueIdAndCycleStart(UUID venueId, LocalDate cycleStart);
+    List<HostDebts> findByVenueIdAndCycleEndBeforeAndStatusNot(UUID venueId, LocalDate cycleEnd, HostDebtStatus status);
 }

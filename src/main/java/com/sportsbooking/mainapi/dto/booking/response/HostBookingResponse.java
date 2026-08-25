@@ -23,6 +23,9 @@ public class HostBookingResponse {
     private String clientName;
     private String clientPhone;
     private BigDecimal amount;
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
+    private BigDecimal netAmount;
     private Integer status;
     private Boolean paid;
     private Boolean isExpired;

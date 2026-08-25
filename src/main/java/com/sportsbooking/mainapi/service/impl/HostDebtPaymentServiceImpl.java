@@ -38,9 +38,16 @@ public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
                 .status(2) // Default status (2 = PAID automatically)
                 .build();
 
-        // 3. Update the associated host debt status to PAID and save it
-        hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
-        hostDebt.setPaidAmount(request.paidAmount());
+        // 3. Update the associated host debt paid amount and status
+        java.math.BigDecimal currentPaid = hostDebt.getPaidAmount() != null ? hostDebt.getPaidAmount() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal newPaidAmount = currentPaid.add(request.paidAmount());
+        hostDebt.setPaidAmount(newPaidAmount);
+
+        if (newPaidAmount.compareTo(hostDebt.getCommissionAmount()) >= 0) {
+            hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
+        } else {
+            hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PENDING);
+        }
         hostDebtsRepository.save(hostDebt);
 
         // 4. Save the payment

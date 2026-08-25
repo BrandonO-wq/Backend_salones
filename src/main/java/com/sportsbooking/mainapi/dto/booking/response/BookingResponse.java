@@ -21,6 +21,9 @@ public class BookingResponse {
     private LocalDate bookingDate;
     private Integer totalHours;
     private BigDecimal totalAmount;
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
+    private BigDecimal netAmount;
     private Integer status;
     private Integer idPaymentMethod;
     private String bookingCode;
