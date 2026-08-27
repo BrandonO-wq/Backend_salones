@@ -16,6 +16,8 @@ import java.util.UUID;
 public interface CommissionService {
     List<HostDebtResponseDto> getHostDebts(UUID hostId);
 
+    com.sportsbooking.mainapi.jpa.entity.HostDebts registerHostDebtForBooking(com.sportsbooking.mainapi.jpa.entity.BookingEntity booking);
+
     VenueCommissionResponse calculateCurrentCycleCommission(UUID venueId);
 
     List<HostDebtorResponseDto> getHostDebtors();

@@ -915,8 +915,17 @@ public class VenueServiceImpl implements VenueService {
                  BigDecimal bookingEarnings = BigDecimal.ZERO;
  
                  if (b.getStatus() == 3 || b.getStatus() == 4) { // CONFIRMED = 3, COMPLETED = 4
-                     bookingCommission = bookingAmount.multiply(commissionRate);
-                     bookingEarnings = bookingAmount.subtract(bookingCommission);
+                    if (b.getCommissionAmount() != null) {
+                        bookingCommission = b.getCommissionAmount();
+                    } else {
+                        bookingCommission = bookingAmount.multiply(commissionRate).setScale(2, java.math.RoundingMode.HALF_UP);
+                    }
+
+                    if (b.getNetAmount() != null) {
+                        bookingEarnings = b.getNetAmount();
+                    } else {
+                        bookingEarnings = bookingAmount.subtract(bookingCommission);
+                    }
                  }
  
                  bookingDetails.add(VenueDetailedReportDto.BookingDetailReportDto.builder()

@@ -68,8 +68,9 @@ public class CommissionScheduler {
                 continue;
             }
 
-            BigDecimal commissionAmount = booking.getTotalAmount().multiply(BigDecimal.valueOf(commissionRate))
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal commissionAmount = booking.getCommissionAmount() != null
+                    ? booking.getCommissionAmount()
+                    : booking.getTotalAmount().multiply(BigDecimal.valueOf(commissionRate)).setScale(2, RoundingMode.HALF_UP);
 
             HostDebts debt = HostDebts.builder()
                     .hostUserId(venue.getHostUserId())

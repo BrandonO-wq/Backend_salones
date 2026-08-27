@@ -1,12 +1,15 @@
 package com.sportsbooking.mainapi.service.impl;
 
+import com.sportsbooking.mainapi.common.exception.BusinessException;
 import com.sportsbooking.mainapi.common.exception.ResourceNotFoundException;
 import com.sportsbooking.mainapi.dto.commission.HostDebtPaymentRequest;
 import com.sportsbooking.mainapi.dto.commission.HostDebtPaymentResponse;
+import com.sportsbooking.mainapi.dto.commission.VenueCommissionResponse;
 import com.sportsbooking.mainapi.jpa.entity.HostDebtPayment;
 import com.sportsbooking.mainapi.jpa.entity.HostDebts;
 import com.sportsbooking.mainapi.jpa.repository.HostDebtPaymentRepository;
 import com.sportsbooking.mainapi.jpa.repository.HostDebtsRepository;
+import com.sportsbooking.mainapi.service.CommissionService;
 import com.sportsbooking.mainapi.service.HostDebtPaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,36 +24,46 @@ public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
 
     private final HostDebtPaymentRepository hostDebtPaymentRepository;
     private final HostDebtsRepository hostDebtsRepository;
+    private final CommissionService commissionService;
 
     @Override
     @Transactional
     public HostDebtPayment registerPayment(HostDebtPaymentRequest request) {
-        // 1. Verify that the Host Debt exists
-        HostDebts hostDebt = hostDebtsRepository.findById(request.hostDebtId())
-                .orElseThrow(() -> new ResourceNotFoundException("Deuda no encontrada", request.hostDebtId()));
+        HostDebts hostDebt;
+        if (request.hostDebtId() != null) {
+            hostDebt = hostDebtsRepository.findById(request.hostDebtId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Deuda no encontrada", request.hostDebtId()));
+        } else if (request.venueId() != null) {
+            // Calcular o asegurar el registro de deuda del ciclo activo para el venueId
+            VenueCommissionResponse commResponse = commissionService.calculateCurrentCycleCommission(request.venueId());
+            hostDebt = hostDebtsRepository.findById(commResponse.getHostDebtId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Deuda no encontrada para el venue", request.venueId()));
+        } else {
+            throw new BusinessException("Debe proporcionar el ID de la deuda (hostDebtId) o el ID del establecimiento (venueId).");
+        }
 
-        // 2. Create the payment record
+        // 1. Crear el registro del pago
         HostDebtPayment payment = HostDebtPayment.builder()
-                .hostDebtId(request.hostDebtId())
+                .hostDebtId(hostDebt.getId())
                 .paidAmount(request.paidAmount())
                 .tipoDoc(request.tipoDoc())
                 .nroDocumento(request.nroDocumento())
-                .status(2) // Default status (2 = PAID automatically)
+                .status(2) // Default status (2 = PAID automáticamente)
                 .build();
 
-        // 3. Update the associated host debt paid amount and status
+        // 2. Actualizar el pago acumulado de la deuda y cambiar estado a PAID (2)
         java.math.BigDecimal currentPaid = hostDebt.getPaidAmount() != null ? hostDebt.getPaidAmount() : java.math.BigDecimal.ZERO;
         java.math.BigDecimal newPaidAmount = currentPaid.add(request.paidAmount());
         hostDebt.setPaidAmount(newPaidAmount);
-
-        if (newPaidAmount.compareTo(hostDebt.getCommissionAmount()) >= 0) {
+        if (newPaidAmount.compareTo(java.math.BigDecimal.ZERO) > 0) {
             hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
-        } else {
-            hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PENDING);
         }
         hostDebtsRepository.save(hostDebt);
 
-        // 4. Save the payment
+        // 3. Recalcular la comisión del ciclo actual para actualizar prórroga de deadline y estado
+        commissionService.calculateCurrentCycleCommission(hostDebt.getVenueId());
+
+        // 4. Guardar y retornar el pago
         return hostDebtPaymentRepository.save(payment);
     }
 

@@ -83,6 +83,7 @@ public class BookingServiceImpl implements BookingService {
     private final UbigeoService ubigeoService;
     private final ParameterRepository parameterRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
+    private final com.sportsbooking.mainapi.service.CommissionService commissionService;
 
     @jakarta.annotation.PostConstruct
     public void setupJackson() {
@@ -427,6 +428,13 @@ public class BookingServiceImpl implements BookingService {
 
         BookingEntity savedBooking = bookingRepository.save(booking);
 
+        // Crear registro único de la reserva en host_debts (1 reserva = 1 fila en host_debts con status = 1 PENDING)
+        try {
+            commissionService.registerHostDebtForBooking(savedBooking);
+        } catch (Exception e) {
+            log.warn("No se pudo registrar la deuda en host_debts al crear la reserva: {}", e.getMessage());
+        }
+
         // Cleanup Redis
         redisTemplate.delete(holdKey);
         redisTemplate.delete(slotKeys);
@@ -617,6 +625,12 @@ public class BookingServiceImpl implements BookingService {
         booking.setConfirmedAt(OffsetDateTime.now(ZoneOffset.UTC));
         bookingRepository.save(booking);
 
+        try {
+            commissionService.registerHostDebtForBooking(booking);
+        } catch (Exception e) {
+            log.warn("No se pudo registrar la deuda en host_debts al confirmar la reserva: {}", e.getMessage());
+        }
+
         notificationService.sendPushAndSave(
                 booking.getClientUserId(),
                 "Reserva Confirmada",
@@ -638,6 +652,12 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CONFIRMED.getValue());
         booking.setConfirmedAt(OffsetDateTime.now(ZoneOffset.UTC));
         bookingRepository.save(booking);
+
+        try {
+            commissionService.registerHostDebtForBooking(booking);
+        } catch (Exception e) {
+            log.warn("No se pudo registrar la deuda en host_debts al confirmar por sistema la reserva: {}", e.getMessage());
+        }
 
         notificationService.sendPushAndSave(
                 booking.getClientUserId(),
@@ -664,6 +684,12 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.REJECTED.getValue());
         booking.setRejectedAt(OffsetDateTime.now(ZoneOffset.UTC));
         bookingRepository.save(booking);
+
+        try {
+            commissionService.calculateCurrentCycleCommission(venue.getId());
+        } catch (Exception e) {
+            log.warn("No se pudo actualizar host_debts al rechazar la reserva: {}", e.getMessage());
+        }
 
         notificationService.sendPushAndSave(
                 booking.getClientUserId(),
@@ -791,6 +817,27 @@ public class BookingServiceImpl implements BookingService {
             String timeSlot = getBookingTimeSlot(b.getDetails());
             boolean isExpired = isBookingExpired(b.getBookingDate(), b.getDetails(), currentDate, currentTime);
 
+            BigDecimal commRate = b.getCommissionRate();
+            BigDecimal commAmount = b.getCommissionAmount();
+            BigDecimal netAmt = b.getNetAmount();
+
+            if (commRate == null || commAmount == null || netAmt == null) {
+                BigDecimal rate = commRate != null ? commRate : BigDecimal.valueOf(10.0);
+                BigDecimal multiplier = rate.compareTo(BigDecimal.ONE) >= 0
+                        ? rate.divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
+                        : rate;
+                BigDecimal total = b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO;
+                if (commAmount == null) {
+                    commAmount = total.multiply(multiplier).setScale(2, java.math.RoundingMode.HALF_UP);
+                }
+                if (netAmt == null) {
+                    netAmt = total.subtract(commAmount).setScale(2, java.math.RoundingMode.HALF_UP);
+                }
+                if (commRate == null) {
+                    commRate = rate;
+                }
+            }
+
             HostBookingResponse response = HostBookingResponse.builder()
                     .id(b.getId())
                     .venueName(venueName)
@@ -800,9 +847,9 @@ public class BookingServiceImpl implements BookingService {
                     .clientName(clientName)
                     .clientPhone(clientPhone)
                     .amount(b.getTotalAmount())
-                    .commissionRate(b.getCommissionRate())
-                    .commissionAmount(b.getCommissionAmount())
-                    .netAmount(b.getNetAmount())
+                    .commissionRate(commRate)
+                    .commissionAmount(commAmount)
+                    .netAmount(netAmt)
                     .status(b.getStatus())
                     .paid(b.getVoucherUrl() != null && !b.getVoucherUrl().isEmpty())
                     .isExpired(isExpired)

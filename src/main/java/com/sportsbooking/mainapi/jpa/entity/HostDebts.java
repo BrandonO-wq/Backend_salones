@@ -45,6 +45,12 @@ public class HostDebts {
     private UUID venueId;
 
     /**
+     * ID de la reserva asociada (1 reserva = 1 deuda).
+     */
+    @Column(name = "booking_id")
+    private UUID bookingId;
+
+    /**
      * Fecha de inicio del ciclo de facturación.
      */
     @Column(name = "cycle_start", nullable = false)

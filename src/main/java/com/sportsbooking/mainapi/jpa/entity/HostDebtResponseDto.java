@@ -19,6 +19,7 @@ public class HostDebtResponseDto {
     private UUID id;
     private UUID hostUserId;
     private UUID venueId;
+    private UUID bookingId;
     private LocalDate cycleStart;
     private LocalDate cycleEnd;
     private OffsetDateTime deadline;

@@ -7,8 +7,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record HostDebtPaymentRequest(
-    @NotNull(message = "El ID de la deuda no puede ser nulo.")
     UUID hostDebtId,
+
+    UUID venueId,
 
     @NotNull(message = "El monto pagado no puede ser nulo.")
     @Positive(message = "El monto pagado debe ser mayor a cero.")

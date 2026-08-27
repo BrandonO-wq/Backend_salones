@@ -1058,14 +1058,23 @@
 ```json
 [
   {
-    "bookingId": "c8e9b04f-7bde-4df4-8dcf-caafb9d1469e",
+    "id": "c8e9b04f-7bde-4df4-8dcf-caafb9d1469e",
     "venueName": "Cancha Los Campeones",
+    "code": "BK-10293",
     "clientName": "Juan Pérez",
+    "clientPhone": "+51987654321",
     "timeSlot": "18:00 - 20:00",
     "date": "2026-05-18",
     "amount": 240.00,
+    "commissionRate": 10.00,
+    "commissionAmount": 24.00,
+    "netAmount": 216.00,
     "status": 1,
-    "paid": true
+    "paid": true,
+    "isExpired": false,
+    "voucherUrl": "https://...",
+    "message": "Reserva confirmada",
+    "confirmedAt": "2026-05-10T14:30:00Z"
   }
 ]
 ```
