@@ -98,8 +98,10 @@ public class CommissionServiceImpl implements CommissionService {
                 // El ciclo comenzó hace cycleDays - 1 días atrás
                 LocalDate cycleStart = cycleEnd.minusDays(cycleDays - 1);
 
-                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
-                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0)).minusNanos(1).atOffset(ZoneOffset.UTC);
+                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0))
+                                .atOffset(ZoneOffset.UTC);
+                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0))
+                                .minusNanos(1).atOffset(ZoneOffset.UTC);
 
                 log.info("[CommissionScheduler] Iniciando generación de deudas para el ciclo de {} días: {} a {}",
                                 cycleDays, startDateTime, endDateTime);
@@ -162,21 +164,25 @@ public class CommissionServiceImpl implements CommissionService {
                                                 if (b.getCommissionAmount() != null) {
                                                         return b.getCommissionAmount();
                                                 }
-                                                BigDecimal amount = b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO;
-                                                return amount.multiply(rateMult).setScale(2, java.math.RoundingMode.HALF_UP);
+                                                BigDecimal amount = b.getTotalAmount() != null ? b.getTotalAmount()
+                                                                : BigDecimal.ZERO;
+                                                return amount.multiply(rateMult).setScale(2,
+                                                                java.math.RoundingMode.HALF_UP);
                                         })
                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                        Optional<HostDebts> existingDebtOpt = hostDebtsRepository.findByVenueIdAndCycleStart(venueId, cycleStart);
+                        List<HostDebts> existingDebts = hostDebtsRepository.findListByVenueIdAndCycleStart(venueId,
+                                        cycleStart);
                         HostDebts debt;
-                        if (existingDebtOpt.isPresent()) {
-                                debt = existingDebtOpt.get();
+                        if (!existingDebts.isEmpty()) {
+                                debt = existingDebts.get(0);
                                 debt.setTotalIncome(totalIncome);
                                 debt.setCommissionAmount(commissionAmount);
                                 BigDecimal paid = debt.getPaidAmount() != null ? debt.getPaidAmount() : BigDecimal.ZERO;
                                 boolean hasAdvancePayment = paid.compareTo(BigDecimal.ZERO) > 0;
                                 LocalDate targetCycleEnd = hasAdvancePayment ? cycleEnd.plusDays(cycleDays) : cycleEnd;
-                                OffsetDateTime deadlineTime = targetCycleEnd.plusDays(deadlineOffset).atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
+                                OffsetDateTime deadlineTime = targetCycleEnd.plusDays(deadlineOffset)
+                                                .atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
                                 debt.setDeadline(deadlineTime);
 
                                 if (paid.compareTo(commissionAmount) >= 0) {
@@ -190,7 +196,8 @@ public class CommissionServiceImpl implements CommissionService {
                                 }
                         } else {
                                 LocalDate deadlineDate = cycleEnd.plusDays(deadlineOffset);
-                                OffsetDateTime deadlineTime = deadlineDate.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
+                                OffsetDateTime deadlineTime = deadlineDate.atTime(java.time.LocalTime.of(startHour, 0))
+                                                .atOffset(ZoneOffset.UTC);
                                 debt = HostDebts.builder()
                                                 .hostUserId(hostId)
                                                 .venueId(venueId)
@@ -200,7 +207,9 @@ public class CommissionServiceImpl implements CommissionService {
                                                 .totalIncome(totalIncome)
                                                 .commissionAmount(commissionAmount)
                                                 .paidAmount(BigDecimal.ZERO)
-                                                .status(deadlineTime.isBefore(OffsetDateTime.now(ZoneOffset.UTC)) ? HostDebtStatus.OVERDUE : HostDebtStatus.PENDING)
+                                                .status(deadlineTime.isBefore(OffsetDateTime.now(ZoneOffset.UTC))
+                                                                ? HostDebtStatus.OVERDUE
+                                                                : HostDebtStatus.PENDING)
                                                 .build();
                         }
 
@@ -216,16 +225,17 @@ public class CommissionServiceImpl implements CommissionService {
         @Override
         public List<HostDebtResponseDto> getHostDebts(UUID hostId) {
                 return hostDebtsRepository.findAll().stream()
-                                .filter(debt -> hostId == null || (debt.getHostUserId() != null && debt.getHostUserId().equals(hostId)))
+                                .filter(debt -> hostId == null || (debt.getHostUserId() != null
+                                                && debt.getHostUserId().equals(hostId)))
                                 .sorted((a, b) -> b.getCreatedAt() == null ? -1
-                                                 : a.getCreatedAt() == null ? 1
-                                                                 : b.getCreatedAt().compareTo(a.getCreatedAt()))
+                                                : a.getCreatedAt() == null ? 1
+                                                                : b.getCreatedAt().compareTo(a.getCreatedAt()))
                                 .map(this::toDto)
                                 .collect(Collectors.toList());
         }
 
         @Override
-        @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+        @Transactional
         public HostDebts registerHostDebtForBooking(BookingEntity booking) {
                 if (booking == null || booking.getVenueId() == null) {
                         return null;
@@ -249,10 +259,12 @@ public class CommissionServiceImpl implements CommissionService {
                                 .map(p -> p.getValue() != null ? p.getValue().intValue() : 0)
                                 .orElse(0);
 
-                LocalDate today = LocalDate.now();
-                int todayValue = today.getDayOfWeek().getValue();
+                LocalDate baseDate = booking.getConfirmedAt() != null
+                                ? booking.getConfirmedAt().toLocalDate()
+                                : (booking.getBookingDate() != null ? booking.getBookingDate() : LocalDate.now());
+                int todayValue = baseDate.getDayOfWeek().getValue();
                 int daysToSubtract = (todayValue - startDayValue + 7) % 7;
-                LocalDate mostRecentStartDay = today.minusDays(daysToSubtract);
+                LocalDate mostRecentStartDay = baseDate.minusDays(daysToSubtract);
 
                 LocalDate cycleStart;
                 if (cycleDays <= 7) {
@@ -271,12 +283,16 @@ public class CommissionServiceImpl implements CommissionService {
                 OffsetDateTime deadline = cycleEnd.plusDays(deadlineOffset)
                                 .atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
 
-                BigDecimal bookingAmount = booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO;
+                BigDecimal bookingAmount = booking.getTotalAmount() != null ? booking.getTotalAmount()
+                                : BigDecimal.ZERO;
                 BigDecimal commissionAmount = booking.getCommissionAmount();
                 if (commissionAmount == null) {
                         ParameterEntity commissionParam = parameterRepository.findById(57).orElse(null);
-                        Double paramVal = commissionParam != null && commissionParam.getValue() != null ? commissionParam.getValue() : 10.0;
-                        BigDecimal rateMult = paramVal >= 1.0 ? BigDecimal.valueOf(paramVal / 100.0) : BigDecimal.valueOf(paramVal);
+                        Double paramVal = commissionParam != null && commissionParam.getValue() != null
+                                        ? commissionParam.getValue()
+                                        : 10.0;
+                        BigDecimal rateMult = paramVal >= 1.0 ? BigDecimal.valueOf(paramVal / 100.0)
+                                        : BigDecimal.valueOf(paramVal);
                         commissionAmount = bookingAmount.multiply(rateMult).setScale(2, java.math.RoundingMode.HALF_UP);
                 }
 
@@ -286,6 +302,8 @@ public class CommissionServiceImpl implements CommissionService {
                         debt = existingDebtOpt.get();
                         debt.setTotalIncome(bookingAmount);
                         debt.setCommissionAmount(commissionAmount);
+                        debt.setCycleStart(cycleStart);
+                        debt.setCycleEnd(cycleEnd);
                         debt.setDeadline(deadline);
                 } else {
                         debt = HostDebts.builder()
@@ -342,7 +360,8 @@ public class CommissionServiceImpl implements CommissionService {
 
                 LocalDate cycleEnd = cycleStart.plusDays(cycleDays - 1);
 
-                // 1. Marcar deudas de ciclos anteriores finalizados para este venue como OVERDUE (status 3) si no han sido pagadas totalmente y su deadline ha vencido
+                // 1. Marcar deudas de ciclos anteriores finalizados para este venue como
+                // OVERDUE (status 3) si no han sido pagadas totalmente y su deadline ha vencido
                 List<HostDebts> previousPastDebts = hostDebtsRepository.findByVenueIdAndCycleEndBeforeAndStatusNot(
                                 venueId, cycleStart, HostDebtStatus.PAID);
                 OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
@@ -356,8 +375,10 @@ public class CommissionServiceImpl implements CommissionService {
                         }
                 }
 
-                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
-                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0)).minusNanos(1).atOffset(ZoneOffset.UTC);
+                OffsetDateTime startDateTime = cycleStart.atTime(java.time.LocalTime.of(startHour, 0))
+                                .atOffset(ZoneOffset.UTC);
+                OffsetDateTime endDateTime = cycleEnd.plusDays(1).atTime(java.time.LocalTime.of(startHour, 0))
+                                .minusNanos(1).atOffset(ZoneOffset.UTC);
 
                 // Obtener comisión del parámetro 57
                 ParameterEntity commissionParam = parameterRepository.findById(57).orElseThrow(
@@ -372,76 +393,132 @@ public class CommissionServiceImpl implements CommissionService {
                 VenueEntity venue = venueRepository.findById(venueId).orElseThrow(
                                 () -> new IllegalArgumentException("Venue not found: " + venueId));
 
-                // Obtener todas las reservas confirmadas o completadas del venue en el ciclo activo
+                // Sincronizar reservas confirmadas/completadas del ciclo activo en host_debts
                 List<BookingEntity> completedBookings = bookingRepository.findByStatusInAndConfirmedAtBetween(
                                 List.of(BookingStatus.CONFIRMED.getValue(), BookingStatus.COMPLETED.getValue()),
                                 startDateTime, endDateTime).stream()
                                 .filter(b -> b.getVenueId().equals(venueId))
                                 .collect(Collectors.toList());
 
-                // Calcular ingresos totales acumulados a la fecha
-                BigDecimal totalIncome = completedBookings.stream()
-                                .map(BookingEntity::getTotalAmount)
+                for (BookingEntity booking : completedBookings) {
+                        try {
+                                registerHostDebtForBooking(booking);
+                        } catch (Exception e) {
+                                log.warn("[CommissionService] No se pudo sincronizar reserva {} en host_debts: {}",
+                                                booking.getId(), e.getMessage());
+                        }
+                }
+
+                // Obtener todas las filas de host_debts del venue para el ciclo activo
+                List<HostDebts> activeDebts = hostDebtsRepository.findListByVenueIdAndCycleStart(venueId, cycleStart);
+
+                // Calcular suma de ingresos totales, comisiones y montos pagados desde
+                // host_debts
+                BigDecimal totalIncome = activeDebts.stream()
+                                .map(HostDebts::getTotalIncome)
                                 .filter(Objects::nonNull)
                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                // Calcular comisión acumulada a la fecha sumando la columna commission_amount de cada reserva
-                BigDecimal commissionAmount = completedBookings.stream()
-                                .map(b -> {
-                                        if (b.getCommissionAmount() != null) {
-                                                return b.getCommissionAmount();
-                                        }
-                                        BigDecimal amount = b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO;
-                                        return amount.multiply(rateMultiplier).setScale(2, java.math.RoundingMode.HALF_UP);
-                                })
+                BigDecimal commissionAmount = activeDebts.stream()
+                                .map(HostDebts::getCommissionAmount)
+                                .filter(Objects::nonNull)
                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                // 2. Crear o Actualizar el registro en la tabla host_debts para el ciclo activo
-                Optional<HostDebts> existingDebtOpt = hostDebtsRepository.findByVenueIdAndCycleStart(venueId, cycleStart);
-                BigDecimal existingPaid = BigDecimal.ZERO;
-                if (existingDebtOpt.isPresent() && existingDebtOpt.get().getPaidAmount() != null) {
-                        existingPaid = existingDebtOpt.get().getPaidAmount();
-                }
+                BigDecimal paidAmount = activeDebts.stream()
+                                .map(HostDebts::getPaidAmount)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                boolean hasAdvancePayment = existingPaid.compareTo(BigDecimal.ZERO) > 0;
-                LocalDate targetCycleEnd = hasAdvancePayment ? cycleEnd.plusDays(cycleDays) : cycleEnd;
-                OffsetDateTime deadline = targetCycleEnd.plusDays(deadlineOffset).atTime(java.time.LocalTime.of(startHour, 0)).atOffset(ZoneOffset.UTC);
+                OffsetDateTime deadline = cycleEnd.plusDays(deadlineOffset).atTime(java.time.LocalTime.of(startHour, 0))
+                                .atOffset(ZoneOffset.UTC);
 
-                HostDebts currentDebt;
-                if (existingDebtOpt.isPresent()) {
-                        currentDebt = existingDebtOpt.get();
-                        currentDebt.setTotalIncome(totalIncome);
-                        currentDebt.setCommissionAmount(commissionAmount);
-                        currentDebt.setDeadline(deadline);
-                        BigDecimal paid = currentDebt.getPaidAmount() != null ? currentDebt.getPaidAmount() : BigDecimal.ZERO;
-                        if (paid.compareTo(BigDecimal.ZERO) > 0 || paid.compareTo(commissionAmount) >= 0) {
-                                currentDebt.setStatus(HostDebtStatus.PAID);
-                        } else {
-                                currentDebt.setStatus(HostDebtStatus.PENDING);
-                        }
-                } else {
-                        currentDebt = HostDebts.builder()
-                                        .hostUserId(venue.getHostUserId())
-                                        .venueId(venueId)
-                                        .cycleStart(cycleStart)
-                                        .cycleEnd(cycleEnd)
-                                        .deadline(deadline)
-                                        .totalIncome(totalIncome)
-                                        .commissionAmount(commissionAmount)
-                                        .paidAmount(BigDecimal.ZERO)
-                                        .status(existingPaid.compareTo(BigDecimal.ZERO) > 0 ? HostDebtStatus.PAID : HostDebtStatus.PENDING)
-                                        .build();
-                }
-                currentDebt = hostDebtsRepository.save(currentDebt);
-
-                BigDecimal paidAmount = currentDebt.getPaidAmount() != null ? currentDebt.getPaidAmount() : BigDecimal.ZERO;
                 BigDecimal pendingAmount = commissionAmount.subtract(paidAmount);
                 if (pendingAmount.compareTo(BigDecimal.ZERO) < 0) {
                         pendingAmount = BigDecimal.ZERO;
                 }
 
+                // Determinar el estado global del recinto en el ciclo activo
+                int overallStatus = HostDebtStatus.PENDING.getValue();
+                if (commissionAmount.compareTo(BigDecimal.ZERO) == 0 || paidAmount.compareTo(commissionAmount) >= 0) {
+                        overallStatus = HostDebtStatus.PAID.getValue();
+                } else if (now.isAfter(deadline)) {
+                        overallStatus = HostDebtStatus.OVERDUE.getValue();
+                }
+
+                // Desglose del grupo PENDING (status = 1)
+                List<HostDebts> pendingDebtsList = activeDebts.stream()
+                                .filter(d -> d.getStatus() == HostDebtStatus.PENDING)
+                                .collect(Collectors.toList());
+
+                BigDecimal pendingGroupIncome = pendingDebtsList.stream()
+                                .map(HostDebts::getTotalIncome)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal pendingGroupCommission = pendingDebtsList.stream()
+                                .map(HostDebts::getCommissionAmount)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal pendingGroupPaid = pendingDebtsList.stream()
+                                .map(HostDebts::getPaidAmount)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal pendingGroupNetPending = pendingGroupCommission.subtract(pendingGroupPaid);
+                if (pendingGroupNetPending.compareTo(BigDecimal.ZERO) < 0) {
+                        pendingGroupNetPending = BigDecimal.ZERO;
+                }
+
+                VenueCommissionResponse.DebtGroupSummary pendingSummary = VenueCommissionResponse.DebtGroupSummary
+                                .builder()
+                                .status(HostDebtStatus.PENDING.getValue())
+                                .totalIncome(pendingGroupIncome)
+                                .commissionAmount(pendingGroupCommission)
+                                .paidAmount(pendingGroupPaid)
+                                .pendingAmount(pendingGroupNetPending)
+                                .count(pendingDebtsList.size())
+                                .build();
+
+                // Desglose del grupo PAID (status = 2)
+                List<HostDebts> paidDebtsList = activeDebts.stream()
+                                .filter(d -> d.getStatus() == HostDebtStatus.PAID)
+                                .collect(Collectors.toList());
+
+                BigDecimal paidGroupIncome = paidDebtsList.stream()
+                                .map(HostDebts::getTotalIncome)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal paidGroupCommission = paidDebtsList.stream()
+                                .map(HostDebts::getCommissionAmount)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal paidGroupPaid = paidDebtsList.stream()
+                                .map(HostDebts::getPaidAmount)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal paidGroupNetPending = paidGroupCommission.subtract(paidGroupPaid);
+                if (paidGroupNetPending.compareTo(BigDecimal.ZERO) < 0) {
+                        paidGroupNetPending = BigDecimal.ZERO;
+                }
+
+                VenueCommissionResponse.DebtGroupSummary paidSummary = VenueCommissionResponse.DebtGroupSummary
+                                .builder()
+                                .status(HostDebtStatus.PAID.getValue())
+                                .totalIncome(paidGroupIncome)
+                                .commissionAmount(paidGroupCommission)
+                                .paidAmount(paidGroupPaid)
+                                .pendingAmount(paidGroupNetPending)
+                                .count(paidDebtsList.size())
+                                .build();
+
+                UUID representativeDebtId = activeDebts.isEmpty() ? null : activeDebts.get(0).getId();
+
                 return VenueCommissionResponse.builder()
-                                .hostDebtId(currentDebt.getId())
+                                .hostDebtId(representativeDebtId)
                                 .venueName(venue.getName())
                                 .cycleStart(cycleStart)
                                 .cycleEnd(cycleEnd)
@@ -451,7 +528,9 @@ public class CommissionServiceImpl implements CommissionService {
                                 .pendingAmount(pendingAmount)
                                 .deadline(deadline)
                                 .commissionRate(commissionRate)
-                                .status(currentDebt.getStatus() != null ? currentDebt.getStatus().getValue() : HostDebtStatus.PENDING.getValue())
+                                .status(overallStatus)
+                                .pendingSummary(pendingSummary)
+                                .paidSummary(paidSummary)
                                 .build();
         }
 
@@ -511,11 +590,15 @@ public class CommissionServiceImpl implements CommissionService {
                                                         .filter(commission -> commission != null)
                                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                                        // Calcular días de retraso del propietario (máximo retraso de sus deudas vencidas)
+                                        // Calcular días de retraso del propietario (máximo retraso de sus deudas
+                                        // vencidas)
                                         long maxDelayDays = hostDebts.stream()
                                                         .mapToLong(debt -> {
-                                                                if (debt.getDeadline() != null && debt.getDeadline().isBefore(now)) {
-                                                                        return java.time.temporal.ChronoUnit.DAYS.between(debt.getDeadline(), now);
+                                                                if (debt.getDeadline() != null
+                                                                                && debt.getDeadline().isBefore(now)) {
+                                                                        return java.time.temporal.ChronoUnit.DAYS
+                                                                                        .between(debt.getDeadline(),
+                                                                                                        now);
                                                                 }
                                                                 return 0L;
                                                         })
@@ -571,7 +654,8 @@ public class CommissionServiceImpl implements CommissionService {
 
                                                 if (maxCycleEnd != null) {
                                                         List<HostDebts> latestPeriodDebts = hostDebts.stream()
-                                                                        .filter(d -> d.getCycleEnd().equals(maxCycleEnd))
+                                                                        .filter(d -> d.getCycleEnd()
+                                                                                        .equals(maxCycleEnd))
                                                                         .collect(Collectors.toList());
 
                                                         totalIncomeLastPeriod = latestPeriodDebts.stream()
@@ -591,14 +675,17 @@ public class CommissionServiceImpl implements CommissionService {
                                                                         .orElse(null);
 
                                                         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-                                                        boolean hasOverdue = latestPeriodDebts.stream().anyMatch(d -> 
-                                                                d.getStatus() == HostDebtStatus.OVERDUE || 
-                                                                ((d.getStatus() == HostDebtStatus.PENDING || d.getStatus() == HostDebtStatus.LEGACY_PENDING) && 
-                                                                 d.getDeadline() != null && d.getDeadline().isBefore(now))
-                                                        );
-                                                        boolean hasPending = latestPeriodDebts.stream().anyMatch(d -> 
-                                                                d.getStatus() == HostDebtStatus.PENDING || d.getStatus() == HostDebtStatus.LEGACY_PENDING
-                                                        );
+                                                        boolean hasOverdue = latestPeriodDebts.stream().anyMatch(d -> d
+                                                                        .getStatus() == HostDebtStatus.OVERDUE ||
+                                                                        ((d.getStatus() == HostDebtStatus.PENDING || d
+                                                                                        .getStatus() == HostDebtStatus.LEGACY_PENDING)
+                                                                                        &&
+                                                                                        d.getDeadline() != null
+                                                                                        && d.getDeadline().isBefore(
+                                                                                                        now)));
+                                                        boolean hasPending = latestPeriodDebts.stream().anyMatch(d -> d
+                                                                        .getStatus() == HostDebtStatus.PENDING
+                                                                        || d.getStatus() == HostDebtStatus.LEGACY_PENDING);
 
                                                         if (hasOverdue) {
                                                                 statusLastPeriod = HostDebtStatus.OVERDUE;
@@ -609,6 +696,26 @@ public class CommissionServiceImpl implements CommissionService {
                                                         }
                                                 }
                                         }
+
+                                        // Totales de comisión por estado (sobre todas las deudas del host)
+                                        BigDecimal totalPendingCommission = hostDebts.stream()
+                                                        .filter(d -> d.getStatus() == HostDebtStatus.PENDING
+                                                                        || d.getStatus() == HostDebtStatus.LEGACY_PENDING)
+                                                        .map(HostDebts::getCommissionAmount)
+                                                        .filter(Objects::nonNull)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                                        BigDecimal totalPaidCommission = hostDebts.stream()
+                                                        .filter(d -> d.getStatus() == HostDebtStatus.PAID)
+                                                        .map(HostDebts::getCommissionAmount)
+                                                        .filter(Objects::nonNull)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                                        BigDecimal totalOverdueCommission = hostDebts.stream()
+                                                        .filter(d -> d.getStatus() == HostDebtStatus.OVERDUE)
+                                                        .map(HostDebts::getCommissionAmount)
+                                                        .filter(Objects::nonNull)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                                         return RegisteredHostResponseDto.builder()
                                                         .hostId(hostId)
@@ -621,6 +728,9 @@ public class CommissionServiceImpl implements CommissionService {
                                                         .commissionLastPeriod(commissionLastPeriod)
                                                         .deadlineLastPeriod(deadlineLastPeriod)
                                                         .statusLastPeriod(statusLastPeriod)
+                                                        .totalPendingCommission(totalPendingCommission)
+                                                        .totalPaidCommission(totalPaidCommission)
+                                                        .totalOverdueCommission(totalOverdueCommission)
                                                         .build();
                                 })
                                 .collect(Collectors.toList());
@@ -708,8 +818,7 @@ public class CommissionServiceImpl implements CommissionService {
                                 .filter(r -> r.getVenueId() != null)
                                 .collect(Collectors.groupingBy(
                                                 VenueReviewEntity::getVenueId,
-                                                Collectors.averagingDouble(VenueReviewEntity::getPoints)
-                                ));
+                                                Collectors.averagingDouble(VenueReviewEntity::getPoints)));
 
                 OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
@@ -729,16 +838,17 @@ public class CommissionServiceImpl implements CommissionService {
                         if (venueDebts.isEmpty()) {
                                 debtStatus = "NONE";
                         } else if (!unpaidDebts.isEmpty()) {
-                                boolean hasOverdue = unpaidDebts.stream().anyMatch(d -> 
-                                        d.getStatus() == HostDebtStatus.OVERDUE || 
-                                        (d.getDeadline() != null && d.getDeadline().isBefore(now))
-                                );
+                                boolean hasOverdue = unpaidDebts.stream()
+                                                .anyMatch(d -> d.getStatus() == HostDebtStatus.OVERDUE ||
+                                                                (d.getDeadline() != null
+                                                                                && d.getDeadline().isBefore(now)));
                                 debtStatus = hasOverdue ? "OVERDUE" : "PENDING";
 
                                 delayDays = unpaidDebts.stream()
                                                 .mapToLong(d -> {
                                                         if (d.getDeadline() != null && d.getDeadline().isBefore(now)) {
-                                                                return java.time.temporal.ChronoUnit.DAYS.between(d.getDeadline(), now);
+                                                                return java.time.temporal.ChronoUnit.DAYS
+                                                                                .between(d.getDeadline(), now);
                                                         }
                                                         return 0L;
                                                 })
@@ -753,21 +863,28 @@ public class CommissionServiceImpl implements CommissionService {
                         OffsetDateTime deadline = null;
 
                         if (isActive) {
-                                VenueCommissionResponse currentCommission = calculateCurrentCycleCommission(venue.getId());
+                                VenueCommissionResponse currentCommission = calculateCurrentCycleCommission(
+                                                venue.getId());
                                 if (currentCommission != null) {
-                                        commissionAmount = currentCommission.getCommissionAmount() != null 
-                                                        ? currentCommission.getCommissionAmount().doubleValue() : 0.0;
-                                        totalIncome = currentCommission.getTotalIncome() != null 
-                                                        ? currentCommission.getTotalIncome().doubleValue() : 0.0;
+                                        commissionAmount = currentCommission.getCommissionAmount() != null
+                                                        ? currentCommission.getCommissionAmount().doubleValue()
+                                                        : 0.0;
+                                        totalIncome = currentCommission.getTotalIncome() != null
+                                                        ? currentCommission.getTotalIncome().doubleValue()
+                                                        : 0.0;
                                         deadline = currentCommission.getDeadline();
                                 }
                         } else {
                                 if (!unpaidDebts.isEmpty()) {
                                         commissionAmount = unpaidDebts.stream()
-                                                        .mapToDouble(d -> d.getCommissionAmount() != null ? d.getCommissionAmount().doubleValue() : 0.0)
+                                                        .mapToDouble(d -> d.getCommissionAmount() != null
+                                                                        ? d.getCommissionAmount().doubleValue()
+                                                                        : 0.0)
                                                         .sum();
                                         totalIncome = unpaidDebts.stream()
-                                                        .mapToDouble(d -> d.getTotalIncome() != null ? d.getTotalIncome().doubleValue() : 0.0)
+                                                        .mapToDouble(d -> d.getTotalIncome() != null
+                                                                        ? d.getTotalIncome().doubleValue()
+                                                                        : 0.0)
                                                         .sum();
                                         deadline = unpaidDebts.stream()
                                                         .map(HostDebts::getDeadline)
@@ -777,12 +894,18 @@ public class CommissionServiceImpl implements CommissionService {
                                 } else if (!venueDebts.isEmpty()) {
                                         HostDebts latestDebt = venueDebts.stream()
                                                         .max((d1, d2) -> {
-                                                                if (d1.getCycleEnd() == null || d2.getCycleEnd() == null) return 0;
+                                                                if (d1.getCycleEnd() == null
+                                                                                || d2.getCycleEnd() == null)
+                                                                        return 0;
                                                                 return d1.getCycleEnd().compareTo(d2.getCycleEnd());
                                                         }).orElse(null);
                                         if (latestDebt != null) {
-                                                commissionAmount = latestDebt.getCommissionAmount() != null ? latestDebt.getCommissionAmount().doubleValue() : 0.0;
-                                                totalIncome = latestDebt.getTotalIncome() != null ? latestDebt.getTotalIncome().doubleValue() : 0.0;
+                                                commissionAmount = latestDebt.getCommissionAmount() != null
+                                                                ? latestDebt.getCommissionAmount().doubleValue()
+                                                                : 0.0;
+                                                totalIncome = latestDebt.getTotalIncome() != null
+                                                                ? latestDebt.getTotalIncome().doubleValue()
+                                                                : 0.0;
                                                 deadline = latestDebt.getDeadline();
                                         }
                                 }
@@ -843,12 +966,12 @@ public class CommissionServiceImpl implements CommissionService {
         public Map<String, Object> getVenueDisabledStatus(UUID venueId) {
                 VenueEntity venue = venueRepository.findById(venueId)
                                 .orElseThrow(() -> new ResourceNotFoundException("Venue", venueId));
-                
+
                 Integer reason = venue.getDisabledReason();
                 if (reason == null) {
                         reason = 0;
                 }
-                
+
                 String description;
                 switch (reason) {
                         case 1:
@@ -865,12 +988,11 @@ public class CommissionServiceImpl implements CommissionService {
                                 description = "activo";
                                 break;
                 }
-                
+
                 return Map.of(
-                        "disabledReason", reason,
-                        "description", description,
-                        "status", venue.getStatus() != null ? venue.getStatus().name() : "UNKNOWN"
-                );
+                                "disabledReason", reason,
+                                "description", description,
+                                "status", venue.getStatus() != null ? venue.getStatus().name() : "UNKNOWN");
         }
 
         @Override
@@ -891,23 +1013,38 @@ public class CommissionServiceImpl implements CommissionService {
 
                 String startDayName;
                 switch (startDayValue) {
-                        case 1: startDayName = "Lunes"; break;
-                        case 2: startDayName = "Martes"; break;
-                        case 3: startDayName = "Miércoles"; break;
-                        case 4: startDayName = "Jueves"; break;
-                        case 5: startDayName = "Viernes"; break;
-                        case 6: startDayName = "Sábado"; break;
-                        case 7: startDayName = "Domingo"; break;
-                        default: startDayName = "Desconocido"; break;
+                        case 1:
+                                startDayName = "Lunes";
+                                break;
+                        case 2:
+                                startDayName = "Martes";
+                                break;
+                        case 3:
+                                startDayName = "Miércoles";
+                                break;
+                        case 4:
+                                startDayName = "Jueves";
+                                break;
+                        case 5:
+                                startDayName = "Viernes";
+                                break;
+                        case 6:
+                                startDayName = "Sábado";
+                                break;
+                        case 7:
+                                startDayName = "Domingo";
+                                break;
+                        default:
+                                startDayName = "Desconocido";
+                                break;
                 }
 
                 return Map.of(
-                        "cycleDays", cycleDays,
-                        "deadlineOffsetDays", deadlineOffset,
-                        "startDayOfWeek", startDayValue,
-                        "startDayName", startDayName,
-                        "startHour", startHour
-                );
+                                "cycleDays", cycleDays,
+                                "deadlineOffsetDays", deadlineOffset,
+                                "startDayOfWeek", startDayValue,
+                                "startDayName", startDayName,
+                                "startHour", startHour);
         }
 
         @Override
@@ -965,7 +1102,8 @@ public class CommissionServiceImpl implements CommissionService {
                 parameterRepository.save(startHourParam);
 
                 log.info("Configuración de ciclo de comisiones actualizada: ciclo={}, límite={}, día={}, hora={} por admin ID: {}",
-                                request.cycleDays(), request.deadlineOffsetDays(), request.startDayOfWeek(), request.startHour(), adminUserId);
+                                request.cycleDays(), request.deadlineOffsetDays(), request.startDayOfWeek(),
+                                request.startHour(), adminUserId);
                 return new MessageResponse("Configuración del ciclo de comisiones actualizada exitosamente.");
         }
 }

@@ -48,4 +48,23 @@ public class VenueCommissionResponse {
 
     /** Estado de la deuda (1=PENDING, 2=PAID, 3=OVERDUE). */
     private Integer status;
+
+    /** Resumen agrupado de deudas con estado PENDING (status 1). */
+    private DebtGroupSummary pendingSummary;
+
+    /** Resumen agrupado de deudas con estado PAID (status 2). */
+    private DebtGroupSummary paidSummary;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DebtGroupSummary {
+        private Integer status;
+        private BigDecimal totalIncome;
+        private BigDecimal commissionAmount;
+        private BigDecimal paidAmount;
+        private BigDecimal pendingAmount;
+        private Integer count;
+    }
 }

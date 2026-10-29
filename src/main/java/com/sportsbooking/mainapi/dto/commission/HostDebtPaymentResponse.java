@@ -6,11 +6,11 @@ import java.util.UUID;
 
 public record HostDebtPaymentResponse(
     UUID id,
-    UUID hostDebtId,
     OffsetDateTime fechaPago,
     String nombreSalon,
     String tipoDoc,
     String nroDocumento,
     BigDecimal monto,
-    Integer estado
+    Integer estado,
+    BigDecimal totalIngresos
 ) {}

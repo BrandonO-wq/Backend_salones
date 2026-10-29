@@ -24,9 +24,6 @@ public class HostDebtPayment {
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "host_debt_id", nullable = false)
-    private UUID hostDebtId;
-
     @Column(name = "paid_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal paidAmount;
 

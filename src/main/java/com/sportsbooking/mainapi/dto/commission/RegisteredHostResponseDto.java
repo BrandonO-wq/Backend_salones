@@ -25,4 +25,13 @@ public class RegisteredHostResponseDto {
     private BigDecimal commissionLastPeriod;
     private OffsetDateTime deadlineLastPeriod;
     private HostDebtStatus statusLastPeriod;
+
+    /** Total de comisiones con status PENDING (1) del host */
+    private BigDecimal totalPendingCommission;
+
+    /** Total de comisiones con status PAID (2) del host */
+    private BigDecimal totalPaidCommission;
+
+    /** Total de comisiones con status OVERDUE (3) del host */
+    private BigDecimal totalOverdueCommission;
 }

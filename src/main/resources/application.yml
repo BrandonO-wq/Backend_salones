@@ -20,7 +20,7 @@ logging:
 
     org.springframework: INFO
     org.springframework.security: DEBUG
-    org.hibernate: DEBUG
+    org.hibernate: INFO
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql: TRACE
     io.jsonwebtoken: DEBUG

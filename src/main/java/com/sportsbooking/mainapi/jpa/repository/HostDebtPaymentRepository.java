@@ -12,14 +12,14 @@ import java.util.UUID;
 
 @Repository
 public interface HostDebtPaymentRepository extends JpaRepository<HostDebtPayment, UUID> {
-    List<HostDebtPayment> findByHostDebtId(UUID hostDebtId);
-
     @Query("SELECT new com.sportsbooking.mainapi.dto.commission.HostDebtPaymentResponse(" +
-           "  p.id, p.hostDebtId, p.createdAt, v.name, p.tipoDoc, p.nroDocumento, p.paidAmount, p.status" +
+           "  p.id, p.createdAt, v.name, p.tipoDoc, p.nroDocumento, p.paidAmount, p.status," +
+           "  SUM(d.totalIncome)" +
            ") " +
            "FROM HostDebtPayment p " +
-           "JOIN HostDebts d ON p.hostDebtId = d.id " +
+           "JOIN HostDebts d ON d.idCommission = p.id " +
            "JOIN VenueEntity v ON d.venueId = v.id " +
-           "WHERE (:hostUserId IS NULL OR d.hostUserId = :hostUserId)")
+           "WHERE (:hostUserId IS NULL OR d.hostUserId = :hostUserId) " +
+           "GROUP BY p.id, p.createdAt, v.name, p.tipoDoc, p.nroDocumento, p.paidAmount, p.status")
     List<HostDebtPaymentResponse> findPaymentsByHostUserId(@Param("hostUserId") UUID hostUserId);
 }

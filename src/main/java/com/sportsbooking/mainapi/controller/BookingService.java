@@ -50,4 +50,10 @@ public interface BookingService {
     List<ClientBookingResponse> getClientBookings(UUID clientId);
 
     List<HostBookingSummaryResponse> getAllHostBookingSummaries();
+
+    List<com.sportsbooking.mainapi.dto.booking.response.EventTypeBookingCountDto> getBookingsCountByEventType(
+            UUID venueId, Integer status, LocalDate startDate, LocalDate endDate);
+
+    java.util.Map<String, Long> getAdminEventTypesCount();
 }
+

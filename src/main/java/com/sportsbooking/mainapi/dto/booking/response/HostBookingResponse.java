@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -32,4 +33,8 @@ public class HostBookingResponse {
     private String voucherUrl;
     private String message;
     private OffsetDateTime confirmedAt;
+    private String eventType;
+    private List<String> eventTypes;
+    private String sportName;
 }
+

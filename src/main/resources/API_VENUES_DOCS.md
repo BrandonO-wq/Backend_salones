@@ -1074,7 +1074,11 @@
     "isExpired": false,
     "voucherUrl": "https://...",
     "message": "Reserva confirmada",
-    "confirmedAt": "2026-05-10T14:30:00Z"
+    "confirmedAt": "2026-05-10T14:30:00Z",
+    "eventType": "Cumpleaños",
+    "eventTypes": [
+      "Cumpleaños"
+    ]
   }
 ]
 ```

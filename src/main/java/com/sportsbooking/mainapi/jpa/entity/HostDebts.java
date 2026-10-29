@@ -83,6 +83,9 @@ public class HostDebts {
     @Builder.Default
     private HostDebtStatus status = HostDebtStatus.PENDING;
 
+    @Column(name = "id_commission")
+    private UUID idCommission;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

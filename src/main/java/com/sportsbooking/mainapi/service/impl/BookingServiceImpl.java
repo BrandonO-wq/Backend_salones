@@ -426,14 +426,10 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setBookingCode(generatedCode);
 
-        BookingEntity savedBooking = bookingRepository.save(booking);
+        BookingEntity savedBooking = bookingRepository.saveAndFlush(booking);
 
-        // Crear registro único de la reserva en host_debts (1 reserva = 1 fila en host_debts con status = 1 PENDING)
-        try {
-            commissionService.registerHostDebtForBooking(savedBooking);
-        } catch (Exception e) {
-            log.warn("No se pudo registrar la deuda en host_debts al crear la reserva: {}", e.getMessage());
-        }
+        // La deuda en host_debts se registrará únicamente cuando la reserva sea confirmada
+        // (estado CONFIRMED = 3), ya sea por el anfitrión (confirmByHost) o por el sistema (confirmBySystem).
 
         // Cleanup Redis
         redisTemplate.delete(holdKey);
@@ -623,12 +619,12 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.CONFIRMED.getValue());
         booking.setConfirmedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        bookingRepository.save(booking);
+        bookingRepository.saveAndFlush(booking);
 
         try {
             commissionService.registerHostDebtForBooking(booking);
         } catch (Exception e) {
-            log.warn("No se pudo registrar la deuda en host_debts al confirmar la reserva: {}", e.getMessage());
+            log.warn("No se pudo registrar la deuda en host_debts al confirmar la reserva: {}", e.getMessage(), e);
         }
 
         notificationService.sendPushAndSave(
@@ -651,12 +647,12 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.CONFIRMED.getValue());
         booking.setConfirmedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        bookingRepository.save(booking);
+        bookingRepository.saveAndFlush(booking);
 
         try {
             commissionService.registerHostDebtForBooking(booking);
         } catch (Exception e) {
-            log.warn("No se pudo registrar la deuda en host_debts al confirmar por sistema la reserva: {}", e.getMessage());
+            log.warn("No se pudo registrar la deuda en host_debts al confirmar por sistema la reserva: {}", e.getMessage(), e);
         }
 
         notificationService.sendPushAndSave(
@@ -804,6 +800,8 @@ public class BookingServiceImpl implements BookingService {
         LocalDate currentDate = DateUtilities.currentLocalDate();
         LocalTime currentTime = DateUtilities.currentLocalTime();
 
+        Map<Integer, String> sportsMap = getSportsParameterMap();
+
         for (BookingEntity b : bookings) {
             if (distinctBookings.containsKey(b.getId()))
                 continue;
@@ -838,6 +836,35 @@ public class BookingServiceImpl implements BookingService {
                 }
             }
 
+            boolean isPaid = (b.getVoucherUrl() != null && !b.getVoucherUrl().isEmpty())
+                    || Boolean.TRUE.equals(b.getIsSelfHost())
+                    || b.getStatus() == BookingStatus.CONFIRMED.getValue()
+                    || b.getStatus() == BookingStatus.COMPLETED.getValue();
+
+            List<Integer> bSports = (b.getSportsId() != null && b.getSportsId().length > 0)
+                    ? java.util.Arrays.asList(b.getSportsId())
+                    : (venue != null && venue.getIdSports() != null ? java.util.Arrays.asList(venue.getIdSports()) : java.util.List.of());
+
+            List<String> eventTypes = new ArrayList<>();
+            for (Integer sId : bSports) {
+                if (sId == null) continue;
+                String name = sportsMap.get(sId);
+                if (name == null) {
+                    try {
+                        name = parameterRepository.findById(sId)
+                                .map(ParameterEntity::getChildName)
+                                .orElse(null);
+                        if (name != null) {
+                            sportsMap.put(sId, name);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (name != null && !eventTypes.contains(name)) {
+                    eventTypes.add(name);
+                }
+            }
+            String eventType = eventTypes.isEmpty() ? null : String.join(", ", eventTypes);
+
             HostBookingResponse response = HostBookingResponse.builder()
                     .id(b.getId())
                     .venueName(venueName)
@@ -851,11 +878,14 @@ public class BookingServiceImpl implements BookingService {
                     .commissionAmount(commAmount)
                     .netAmount(netAmt)
                     .status(b.getStatus())
-                    .paid(b.getVoucherUrl() != null && !b.getVoucherUrl().isEmpty())
+                    .paid(isPaid)
                     .isExpired(isExpired)
                     .voucherUrl(b.getVoucherUrl())
                     .message(b.getDescription())
                     .confirmedAt(b.getConfirmedAt())
+                    .eventType(eventType)
+                    .eventTypes(eventTypes)
+                    .sportName(eventType)
                     .build();
             distinctBookings.put(b.getId(), response);
         }
@@ -1118,7 +1148,170 @@ public class BookingServiceImpl implements BookingService {
         return names.isEmpty() ? "Fútbol" : String.join(", ", names);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<EventTypeBookingCountDto> getBookingsCountByEventType(UUID venueId, Integer status, LocalDate startDate, LocalDate endDate) {
+        log.info("[getBookingsCountByEventType] Generando reporte de reservas por tipo de evento. Filtros: venueId={}, status={}, startDate={}, endDate={}",
+                venueId, status, startDate, endDate);
+
+        // 1. Obtener catálogo de tipos de evento (idParamParent = 1)
+        List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> eventTypeParams = new ArrayList<>();
+        try {
+            List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> params = parameterService.getByParent(1);
+            if (params != null) {
+                eventTypeParams.addAll(params);
+            }
+        } catch (Exception e) {
+            log.warn("[getBookingsCountByEventType] No se pudieron cargar los parámetros de tipos de evento: {}", e.getMessage());
+        }
+
+        // 2. Obtener reservas
+        List<BookingEntity> bookings = bookingRepository.findAll();
+
+        // Aplicar filtros opcionales
+        java.util.stream.Stream<BookingEntity> stream = bookings.stream();
+        if (venueId != null) {
+            stream = stream.filter(b -> venueId.equals(b.getVenueId()));
+        }
+        if (status != null) {
+            stream = stream.filter(b -> b.getStatus() == status);
+        }
+        if (startDate != null) {
+            stream = stream.filter(b -> b.getBookingDate() != null && !b.getBookingDate().isBefore(startDate));
+        }
+        if (endDate != null) {
+            stream = stream.filter(b -> b.getBookingDate() != null && !b.getBookingDate().isAfter(endDate));
+        }
+
+        List<BookingEntity> filteredBookings = stream.toList();
+        long totalBookings = filteredBookings.size();
+
+        // 3. Contabilizar reservas por tipo de evento
+        // Si una reserva contiene múltiples tipos de eventos (ej: [1, 2]), suma 1 a cada tipo
+        Map<Integer, Long> countByEventType = new HashMap<>();
+        for (BookingEntity b : filteredBookings) {
+            Integer[] sports = b.getSportsId();
+            if (sports != null && sports.length > 0) {
+                Set<Integer> uniqueTypesInBooking = Arrays.stream(sports)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                for (Integer typeId : uniqueTypesInBooking) {
+                    countByEventType.merge(typeId, 1L, Long::sum);
+                }
+            }
+        }
+
+        // 4. Mapear cada tipo de evento del catálogo con su conteo
+        Map<Integer, EventTypeBookingCountDto> resultMap = new LinkedHashMap<>();
+        for (var p : eventTypeParams) {
+            if (p.getIdParam() == null) continue;
+            long count = countByEventType.getOrDefault(p.getIdParam(), 0L);
+            double percentage = totalBookings > 0
+                    ? Math.round((count * 100.0 / totalBookings) * 100.0) / 100.0
+                    : 0.0;
+
+            resultMap.put(p.getIdParam(), EventTypeBookingCountDto.builder()
+                    .eventTypeId(p.getIdParam())
+                    .eventTypeName(p.getChildName() != null ? p.getChildName() : "Tipo #" + p.getIdParam())
+                    .description(p.getDescription())
+                    .icon(p.getIcon())
+                    .iconType(p.getIconType())
+                    .bookingCount(count)
+                    .percentage(percentage)
+                    .build());
+        }
+
+        // 5. Incluir cualquier id presente en las reservas que no esté en el catálogo activo
+        for (Map.Entry<Integer, Long> entry : countByEventType.entrySet()) {
+            Integer typeId = entry.getKey();
+            if (!resultMap.containsKey(typeId)) {
+                long count = entry.getValue();
+                double percentage = totalBookings > 0
+                        ? Math.round((count * 100.0 / totalBookings) * 100.0) / 100.0
+                        : 0.0;
+                resultMap.put(typeId, EventTypeBookingCountDto.builder()
+                        .eventTypeId(typeId)
+                        .eventTypeName("Tipo #" + typeId)
+                        .description(null)
+                        .icon(null)
+                        .iconType(null)
+                        .bookingCount(count)
+                        .percentage(percentage)
+                        .build());
+            }
+        }
+
+        // Retornar lista ordenada descendentemente por cantidad de reservas
+        return resultMap.values().stream()
+                .sorted(Comparator.comparingLong(EventTypeBookingCountDto::getBookingCount).reversed())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Long> getAdminEventTypesCount() {
+        log.info("[getAdminEventTypesCount] Calculando el total de tipos de eventos de reservas para administración de todos los venues");
+
+        // 1. Cargar tipos de eventos del catálogo (idParamParent = 1)
+        List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> eventTypeParams = new ArrayList<>();
+        Map<Integer, String> sportsMap = new HashMap<>();
+        try {
+            List<com.sportsbooking.mainapi.dto.parameter.ParameterDto> params = parameterService.getByParent(1);
+            if (params != null) {
+                eventTypeParams.addAll(params);
+                for (var p : params) {
+                    if (p.getIdParam() != null && p.getChildName() != null) {
+                        sportsMap.put(p.getIdParam(), p.getChildName());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[getAdminEventTypesCount] Error al cargar parámetros de tipos de evento: {}", e.getMessage());
+        }
+
+        // Inicializar mapa preservando tipos de evento del catálogo con 0 reservas
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (var p : eventTypeParams) {
+            if (p.getChildName() != null && !p.getChildName().isBlank()) {
+                counts.put(p.getChildName(), 0L);
+            }
+        }
+
+        // 2. Obtener todas las reservas de todos los venues en general
+        List<BookingEntity> allBookings = bookingRepository.findAll();
+
+        // 3. Contabilizar cada tipo de evento presente en cada reserva
+        // Si una reserva tiene varios eventos (ej: [1, 2]), suma 1 para cada tipo de evento
+        for (BookingEntity b : allBookings) {
+            Integer[] sports = b.getSportsId();
+            if (sports != null && sports.length > 0) {
+                Set<Integer> uniqueTypes = Arrays.stream(sports)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                for (Integer sId : uniqueTypes) {
+                    String eventName = sportsMap.get(sId);
+                    if (eventName == null || eventName.isBlank()) {
+                        eventName = "Tipo #" + sId;
+                    }
+                    counts.merge(eventName, 1L, Long::sum);
+                }
+            }
+        }
+
+        // 4. Retornar ordenado descendentemente por mayor cantidad de reservas
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (e1, e2) -> e1,
+                        LinkedHashMap::new
+                ));
+    }
+
+
     @Data
+
     private static class HoldMetadata {
         private UUID userId;
         private UUID venueId;

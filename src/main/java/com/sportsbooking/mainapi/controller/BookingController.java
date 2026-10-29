@@ -87,7 +87,8 @@ public class BookingController {
         log.info("[createBooking] userId={}, holdId={}, rawSportsId='{}', extractedSportsId={}",
                 userId, holdId, rawSportsId, extractedSportsId);
 
-        BookingResponse response = bookingService.confirmBooking(userId, holdId, voucher, idPaymentMethod, description, extractedSportsId);
+        BookingResponse response = bookingService.confirmBooking(userId, holdId, voucher, idPaymentMethod, description,
+                extractedSportsId);
         return ResponseEntity.ok(response);
     }
 
@@ -98,8 +99,13 @@ public class BookingController {
         if (rawSportsId != null && !rawSportsId.isBlank()) {
             candidates.add(rawSportsId);
         }
+        String rawEventType = request.getParameter("eventType");
+        if (rawEventType != null && !rawEventType.isBlank()) {
+            candidates.add(rawEventType);
+        }
 
-        String[] keys = {"sports_id", "sports_id[]", "sportsId", "sportsId[]", "sports_id[0]"};
+        String[] keys = { "sports_id", "sports_id[]", "sportsId", "sportsId[]", "sports_id[0]", "eventType",
+                "eventType[]", "event_type", "event_type[]", "eventTypes", "eventTypes[]" };
         for (String key : keys) {
             String[] vals = request.getParameterValues(key);
             if (vals != null) {
@@ -116,7 +122,8 @@ public class BookingController {
             if (str.startsWith("[") && str.endsWith("]")) {
                 str = str.substring(1, str.length() - 1);
             }
-            if (str.isBlank()) continue;
+            if (str.isBlank())
+                continue;
 
             String[] parts = str.split(",");
             for (String p : parts) {
@@ -234,5 +241,24 @@ public class BookingController {
             @AuthenticationPrincipal UUID userId) {
         long count = bookingService.countPendingByHost(userId);
         return ResponseEntity.ok(Map.of("count", count));
+    }
+
+    @GetMapping({ "/stats/by-event-type", "/report/event-types" })
+    @Operation(summary = "Cantidad de reservas por cada tipo de evento", description = "Retorna la cantidad de reservas asociadas a cada tipo de evento. Aunque una reserva incluya múltiples tipos de evento, se contabiliza individualmente para cada tipo.")
+    public ResponseEntity<List<com.sportsbooking.mainapi.dto.booking.response.EventTypeBookingCountDto>> getBookingsCountByEventType(
+            @RequestParam(name = "venueId", required = false) UUID venueId,
+            @RequestParam(name = "status", required = false) Integer status,
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<com.sportsbooking.mainapi.dto.booking.response.EventTypeBookingCountDto> response = bookingService
+                .getBookingsCountByEventType(venueId, status, startDate, endDate);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping({ "/admin/event-types-count", "/admin/stats/event-types" })
+    @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
+    @Operation(summary = "Total de tipos de eventos de reservas para administración", description = "Retorna el total de reservas agrupadas por tipo de evento de todos los venues en general (ejm: { \"Bodas\": 5, \"Cumpleaños\": 6 }). Aún si una reserva tiene varios eventos, se suma cada tipo de evento.")
+    public ResponseEntity<Map<String, Long>> getAdminEventTypesCount() {
+        return ResponseEntity.ok(bookingService.getAdminEventTypesCount());
     }
 }

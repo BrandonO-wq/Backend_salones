@@ -29,42 +29,44 @@ public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
     @Override
     @Transactional
     public HostDebtPayment registerPayment(HostDebtPaymentRequest request) {
-        HostDebts hostDebt;
-        if (request.hostDebtId() != null) {
-            hostDebt = hostDebtsRepository.findById(request.hostDebtId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Deuda no encontrada", request.hostDebtId()));
-        } else if (request.venueId() != null) {
-            // Calcular o asegurar el registro de deuda del ciclo activo para el venueId
-            VenueCommissionResponse commResponse = commissionService.calculateCurrentCycleCommission(request.venueId());
-            hostDebt = hostDebtsRepository.findById(commResponse.getHostDebtId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Deuda no encontrada para el venue", request.venueId()));
-        } else {
-            throw new BusinessException("Debe proporcionar el ID de la deuda (hostDebtId) o el ID del establecimiento (venueId).");
-        }
-
-        // 1. Crear el registro del pago
+        // 1. Registrar el pago en commission_payments para generar el ID
         HostDebtPayment payment = HostDebtPayment.builder()
-                .hostDebtId(hostDebt.getId())
                 .paidAmount(request.paidAmount())
                 .tipoDoc(request.tipoDoc())
                 .nroDocumento(request.nroDocumento())
-                .status(2) // Default status (2 = PAID automáticamente)
+                .status(2) // 2 = PAID automáticamente
                 .build();
+        payment = hostDebtPaymentRepository.save(payment);
 
-        // 2. Actualizar el pago acumulado de la deuda y cambiar estado a PAID (2)
-        java.math.BigDecimal currentPaid = hostDebt.getPaidAmount() != null ? hostDebt.getPaidAmount() : java.math.BigDecimal.ZERO;
-        java.math.BigDecimal newPaidAmount = currentPaid.add(request.paidAmount());
-        hostDebt.setPaidAmount(newPaidAmount);
-        if (newPaidAmount.compareTo(java.math.BigDecimal.ZERO) > 0) {
-            hostDebt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
+        UUID venueId = request.venueId();
+        if (venueId == null && request.hostDebtId() != null) {
+            HostDebts debt = hostDebtsRepository.findById(request.hostDebtId()).orElse(null);
+            if (debt != null) {
+                venueId = debt.getVenueId();
+            }
         }
-        hostDebtsRepository.save(hostDebt);
 
-        // 3. Recalcular la comisión del ciclo actual para actualizar prórroga de deadline y estado
-        commissionService.calculateCurrentCycleCommission(hostDebt.getVenueId());
+        if (venueId == null) {
+            throw new BusinessException("Debe proporcionar el ID del establecimiento (venueId) o un ID de deuda válido.");
+        }
 
-        // 4. Guardar y retornar el pago
-        return hostDebtPaymentRepository.save(payment);
+        // 2. Obtener todas las filas de host_debts con status = PENDING (1) para este venue
+        List<HostDebts> pendingDebts = hostDebtsRepository.findByVenueIdAndStatus(venueId, com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PENDING);
+
+        // 3. Asignar el ID de la comisión generada y pasar el status a PAID (2) de cada fila
+        for (HostDebts debt : pendingDebts) {
+            debt.setIdCommission(payment.getId());
+            debt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
+            if (debt.getCommissionAmount() != null) {
+                debt.setPaidAmount(debt.getCommissionAmount());
+            }
+            hostDebtsRepository.save(debt);
+        }
+
+        // 4. Recalcular la comisión del ciclo actual para actualizar estados del venue
+        commissionService.calculateCurrentCycleCommission(venueId);
+
+        return payment;
     }
 
     @Override
