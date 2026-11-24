@@ -7,6 +7,7 @@ import com.sportsbooking.mainapi.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/notifications")
+@RequestMapping(value = "/notifications", produces = MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8")
 @RequiredArgsConstructor
 public class NotificationController {
 

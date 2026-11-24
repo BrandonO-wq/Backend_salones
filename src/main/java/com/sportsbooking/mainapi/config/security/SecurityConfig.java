@@ -17,6 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CharacterEncodingFilter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -134,9 +135,23 @@ public class SecurityConfig {
                                                 .anyRequest().authenticated())
                                 .exceptionHandling(ex -> ex.authenticationEntryPoint(customAuthEntryPoint)
                                                 .accessDeniedHandler(customAccessDeniedHandler))
+                                .addFilterBefore(characterEncodingFilter(), org.springframework.security.web.session.DisableEncodeUrlFilter.class)
                                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
                 return http.build();
+        }
+
+        /**
+         * Bean para forzar codificación UTF-8 en todas las peticiones y respuestas HTTP.
+         *
+         * @return filtro {@link CharacterEncodingFilter} configurado en UTF-8 forzado.
+         */
+        @Bean
+        public CharacterEncodingFilter characterEncodingFilter() {
+                CharacterEncodingFilter filter = new CharacterEncodingFilter();
+                filter.setEncoding("UTF-8");
+                filter.setForceEncoding(true);
+                return filter;
         }
 
         /**

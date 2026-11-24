@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -25,4 +26,8 @@ public class VenueBookingReportDto {
     private String ubigeo;
     private Long reviewsCount;
     private Double reviewsAverage;
+    private String status; // "ACTIVO" o "INACTIVO"
+    private Boolean isActive;
+    private String eventType;
+    private List<String> eventTypes;
 }

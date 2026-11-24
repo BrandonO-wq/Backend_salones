@@ -277,7 +277,7 @@ public class VenueController {
                 return ResponseEntity.ok(venueService.deletePhoto(userId, photoId));
         }
 
-        @Operation(summary = "Reporte de reservas por cancha", description = "Retorna una lista de todas las canchas con la cantidad de reservas y el nombre de su dueño.")
+        @Operation(summary = "Reporte de reservas por salón", description = "Retorna una lista de todos los salones con la cantidad de reservas, el nombre de su dueño, estado (activo/inactivo) y tipos de eventos que ofrece.")
         @GetMapping("/report/bookings")
         public ResponseEntity<List<VenueBookingReportDto>> getVenuesBookingReport() {
                 return ResponseEntity.ok(venueService.getVenuesBookingReport());

@@ -18,6 +18,6 @@ public interface HostDebtsRepository extends JpaRepository<HostDebts, UUID> {
     java.util.Optional<HostDebts> findByBookingId(UUID bookingId);
     List<HostDebts> findListByVenueIdAndCycleStart(UUID venueId, LocalDate cycleStart);
     List<HostDebts> findByVenueIdAndCycleEndBeforeAndStatusNot(UUID venueId, LocalDate cycleEnd, HostDebtStatus status);
-    List<HostDebts> findByVenueIdAndStatus(UUID venueId, HostDebtStatus status);
+    List<HostDebts> findByVenueIdAndStatusNot(UUID venueId, com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus status);
     List<HostDebts> findByHostUserIdAndStatus(UUID hostUserId, HostDebtStatus status);
 }

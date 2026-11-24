@@ -23,18 +23,21 @@ import java.util.UUID;
 /**
  * Contrato del servicio de autenticación.
  *
- * <p>Define todas las operaciones de autenticación disponibles en la API:
+ * <p>
+ * Define todas las operaciones de autenticación disponibles en la API:
  * registro con OTP, verificación de OTP, login, logout, renovación de tokens
  * y consulta del usuario autenticado.
  */
 public interface AuthService {
 
     /**
-     * Registra un nuevo usuario con rol CLIENT en estado INACTIVO y dispara el envío
+     * Registra un nuevo usuario con rol CLIENT en estado INACTIVO y dispara el
+     * envío
      * de un código OTP al email del usuario.
      *
      * @param request datos del nuevo usuario (nombre, email, teléfono, contraseña).
-     * @return {@link RegisterResponse} con el {@code userId} del usuario recién creado.
+     * @return {@link RegisterResponse} con el {@code userId} del usuario recién
+     *         creado.
      */
     RegisterResponse register(RegisterRequest request);
 
@@ -48,7 +51,8 @@ public interface AuthService {
     TokenResponse verifyOtp(VerifyOtpRequest request);
 
     /**
-     * Reenvía un nuevo código OTP al email del usuario, siempre que el cooldown haya expirado.
+     * Reenvía un nuevo código OTP al email del usuario, siempre que el cooldown
+     * haya expirado.
      *
      * @param request contiene el {@code userId} del usuario en estado PENDIENTE.
      * @return mensaje de confirmación.
@@ -58,7 +62,8 @@ public interface AuthService {
     /**
      * Solicita un OTP de recuperación de contraseña al email indicado.
      *
-     * <p>Por seguridad, siempre retorna un mensaje genérico sin revelar
+     * <p>
+     * Por seguridad, siempre retorna un mensaje genérico sin revelar
      * si el email existe o no en el sistema.
      *
      * @param request contiene el {@code email} del usuario.
@@ -71,7 +76,8 @@ public interface AuthService {
      * opaco en Redis (10 min TTL, un solo uso).
      *
      * @param request contiene el {@code userId} y el {@code otpCode}.
-     * @return {@link ResetTokenResponse} con el token para {@code POST /auth/reset-password}.
+     * @return {@link ResetTokenResponse} con el token para
+     *         {@code POST /auth/reset-password}.
      */
     ResetTokenResponse verifyRecoveryOtp(VerifyRecoveryOtpRequest request);
 
@@ -94,7 +100,8 @@ public interface AuthService {
     /**
      * Autentica un usuario ACTIVO con rol ADMIN y retorna el par de tokens.
      *
-     * <p>Falla con error 403 si el usuario no tiene rol ADMIN.
+     * <p>
+     * Falla con error 403 si el usuario no tiene rol ADMIN.
      *
      * @param request credenciales del administrador (email y contraseña).
      * @return par de tokens {@code accessToken} y {@code refreshToken}.
@@ -110,10 +117,12 @@ public interface AuthService {
     TokenResponse refreshToken(RefreshTokenRequest request);
 
     /**
-     * Cierra la sesión del usuario: extrae el token del header, lo banea en Redis y revoca
+     * Cierra la sesión del usuario: extrae el token del header, lo banea en Redis y
+     * revoca
      * todos los refresh tokens activos del usuario en la BD.
      *
-     * @param request contiene el token JWT del usuario a desloguear (en el header Authorization).
+     * @param request contiene el token JWT del usuario a desloguear (en el header
+     *                Authorization).
      * @return mensaje de confirmación de cierre de sesión.
      */
     MessageResponse logout(HttpServletRequest request);
@@ -121,7 +130,8 @@ public interface AuthService {
     /**
      * Actualiza el token de Firebase (FCM) del usuario autenticado.
      *
-     * <p>El {@code userId} se toma del JWT del usuario ya autenticado,
+     * <p>
+     * El {@code userId} se toma del JWT del usuario ya autenticado,
      * no es enviado en el body por seguridad.
      *
      * @param userId  ID del usuario autenticado (extraído del JWT).
@@ -148,7 +158,8 @@ public interface AuthService {
     TokenResponse loginWithGoogle(GoogleLoginRequest request);
 
     /**
-     * Inicia el proceso de eliminación de cuenta del usuario, generando y enviando un OTP.
+     * Inicia el proceso de eliminación de cuenta del usuario, generando y enviando
+     * un OTP.
      *
      * @param userId ID del usuario autenticado.
      * @return mensaje de confirmación de envío.

@@ -1010,8 +1010,11 @@ public class BookingServiceImpl implements BookingService {
                 continue;
 
             UserEntity host = hostMap.get(venue.getHostUserId());
-            UUID hostId = (host != null) ? host.getId() : null;
-            String hostName = (host != null) ? host.getName() : "Anfitrión Desconocido";
+            // Solo incluir salones de propietarios activos (status = 1)
+            if (host == null || host.getStatus() != 1)
+                continue;
+            UUID hostId = host.getId();
+            String hostName = host.getName();
 
             String venueName = venue.getName();
 

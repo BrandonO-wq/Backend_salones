@@ -7,17 +7,23 @@ import com.sportsbooking.mainapi.dto.commission.HostDebtPaymentResponse;
 import com.sportsbooking.mainapi.dto.commission.VenueCommissionResponse;
 import com.sportsbooking.mainapi.jpa.entity.HostDebtPayment;
 import com.sportsbooking.mainapi.jpa.entity.HostDebts;
+import com.sportsbooking.mainapi.jpa.entity.VenueEntity;
+import com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus;
+import com.sportsbooking.mainapi.jpa.entity.enums.VenueStatus;
 import com.sportsbooking.mainapi.jpa.repository.HostDebtPaymentRepository;
 import com.sportsbooking.mainapi.jpa.repository.HostDebtsRepository;
+import com.sportsbooking.mainapi.jpa.repository.VenueRepository;
 import com.sportsbooking.mainapi.service.CommissionService;
 import com.sportsbooking.mainapi.service.HostDebtPaymentService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
@@ -25,6 +31,7 @@ public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
     private final HostDebtPaymentRepository hostDebtPaymentRepository;
     private final HostDebtsRepository hostDebtsRepository;
     private final CommissionService commissionService;
+    private final VenueRepository venueRepository;
 
     @Override
     @Transactional
@@ -50,20 +57,32 @@ public class HostDebtPaymentServiceImpl implements HostDebtPaymentService {
             throw new BusinessException("Debe proporcionar el ID del establecimiento (venueId) o un ID de deuda válido.");
         }
 
-        // 2. Obtener todas las filas de host_debts con status = PENDING (1) para este venue
-        List<HostDebts> pendingDebts = hostDebtsRepository.findByVenueIdAndStatus(venueId, com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PENDING);
+        // 2. Obtener todas las filas de host_debts con status != PAID (2) para este venue
+        List<HostDebts> pendingDebts = hostDebtsRepository.findByVenueIdAndStatusNot(venueId, HostDebtStatus.PAID);
 
         // 3. Asignar el ID de la comisión generada y pasar el status a PAID (2) de cada fila
         for (HostDebts debt : pendingDebts) {
             debt.setIdCommission(payment.getId());
-            debt.setStatus(com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus.PAID);
+            debt.setStatus(HostDebtStatus.PAID);
             if (debt.getCommissionAmount() != null) {
                 debt.setPaidAmount(debt.getCommissionAmount());
             }
             hostDebtsRepository.save(debt);
         }
 
-        // 4. Recalcular la comisión del ciclo actual para actualizar estados del venue
+        // 4. Habilitar el salón si estaba inhabilitado por deuda (status = 1 / ACTIVE)
+        VenueEntity venue = venueRepository.findById(venueId).orElse(null);
+        if (venue != null) {
+            venue.setStatus(VenueStatus.ACTIVE);
+            if (venue.getDisabledReason() == null || venue.getDisabledReason() == 1 || venue.getDisabledReason() == 2) {
+                venue.setDisabledReason(0); // 0 = activo
+            }
+            venueRepository.saveAndFlush(venue);
+            log.info("[HostDebtPayment] Salón '{}' (ID: {}) habilitado automáticamente (status = ACTIVE, disabledReason = 0) tras registrar pago de comisiones.",
+                    venue.getName(), venueId);
+        }
+
+        // 5. Recalcular la comisión del ciclo actual para actualizar estados del venue
         commissionService.calculateCurrentCycleCommission(venueId);
 
         return payment;

@@ -9,6 +9,7 @@ import com.sportsbooking.mainapi.jpa.repository.NotificationRepository;
 import com.sportsbooking.mainapi.jpa.repository.UserRepository;
 import com.sportsbooking.mainapi.common.exception.ResourceNotFoundException;
 import com.sportsbooking.mainapi.common.constants.RouteConstants;
+import com.sportsbooking.mainapi.common.utils.EncodingUtils;
 import com.sportsbooking.mainapi.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,10 +36,13 @@ public class NotificationServiceImpl implements NotificationService {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("Usuario", userId);
         }
+        String cleanTitle = EncodingUtils.sanitizeMojibake(title);
+        String cleanBody = EncodingUtils.sanitizeMojibake(body);
+
         sendPushAndSave(
                 userId,
-                title,
-                body,
+                cleanTitle,
+                cleanBody,
                 NotificationType.DEBT_ALERT,
                 null,
                 Map.of("route", RouteConstants.HOST_DEBTS)
@@ -50,11 +54,14 @@ public class NotificationServiceImpl implements NotificationService {
     public void sendPushAndSave(UUID userId, String title, String body, NotificationType type, UUID relatedId, Map<String, String> data) {
         log.info("[NotificationService] Registrando notificación para userId: {} ({})", userId, type);
 
+        String cleanTitle = EncodingUtils.sanitizeMojibake(title);
+        String cleanBody = EncodingUtils.sanitizeMojibake(body);
+
         // 1. Guardar en BD para historial (la campanita)
         NotificationEntity entity = NotificationEntity.builder()
                 .userId(userId)
-                .title(title)
-                .body(body)
+                .title(cleanTitle)
+                .body(cleanBody)
                 .type(type)
                 .relatedId(relatedId)
                 .isRead(false)
@@ -63,7 +70,7 @@ public class NotificationServiceImpl implements NotificationService {
 
         // 2. Disparar FCM (puede fallar, no debe afectar el commit DB)
         try {
-            pushNotificationComponent.sendToUser(userId, title, body, data);
+            pushNotificationComponent.sendToUser(userId, cleanTitle, cleanBody, data);
         } catch (Exception e) {
             log.warn("[NotificationService] Fallo al enviar FCM a {}: {}", userId, e.getMessage());
         }

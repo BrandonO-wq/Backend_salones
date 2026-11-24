@@ -30,6 +30,9 @@ import com.sportsbooking.mainapi.enums.RoleEnum;
 import com.sportsbooking.mainapi.enums.UserStatusEnum;
 import com.sportsbooking.mainapi.jpa.entity.RefreshTokenEntity;
 import com.sportsbooking.mainapi.jpa.entity.UserEntity;
+import com.sportsbooking.mainapi.jpa.entity.HostDebts;
+import com.sportsbooking.mainapi.jpa.entity.enums.HostDebtStatus;
+import com.sportsbooking.mainapi.jpa.repository.HostDebtsRepository;
 import com.sportsbooking.mainapi.jpa.repository.RefreshTokenRepository;
 import com.sportsbooking.mainapi.jpa.repository.UserRepository;
 import com.sportsbooking.mainapi.service.AuthService;
@@ -90,6 +93,7 @@ public class AuthServiceImpl implements AuthService {
     private final RecoveryEmailPublisher recoveryEmailPublisher;
     private final GoogleAuthService googleAuthService;
     private final DeleteAccountEmailPublisher deleteAccountEmailPublisher;
+    private final HostDebtsRepository hostDebtsRepository;
 
     // ─────────────────────────────────────────────
     // Registro
@@ -730,6 +734,9 @@ public class AuthServiceImpl implements AuthService {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario", userId));
 
+        // 0. Validar que el usuario no tenga deudas pendientes de pago
+        validateNoPendingDebts(userId);
+
         // 1. Rate-limit global de OTP por email
         otpComponent.checkAndIncrementOtpRate(user.getEmail());
 
@@ -755,6 +762,9 @@ public class AuthServiceImpl implements AuthService {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario", userId));
 
+        // 0. Validar que el usuario no tenga deudas pendientes de pago
+        validateNoPendingDebts(userId);
+
         // 1. Validar OTP en Redis
         if (!otpComponent.validateOtp(userId, request.otpCode())) {
             throw new BusinessException("El código OTP es incorrecto o ha expirado.");
@@ -771,5 +781,18 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("Cuenta desactivada (soft delete) para el usuario: {} (id={})", user.getEmail(), userId);
         return new MessageResponse("Tu cuenta ha sido eliminada permanentemente.");
+    }
+
+    /**
+     * Valida que el usuario no tenga deudas de comisión pendientes o vencidas por pagar.
+     *
+     * @param userId ID del usuario.
+     * @throws BusinessException si existen deudas con status diferente a PAID.
+     */
+    private void validateNoPendingDebts(UUID userId) {
+        List<HostDebts> unpaidDebts = hostDebtsRepository.findByHostUserIdAndStatusNot(userId, HostDebtStatus.PAID);
+        if (unpaidDebts != null && !unpaidDebts.isEmpty()) {
+            throw new BusinessException("No puedes eliminar tu cuenta porque tienes deudas de comisión pendientes de pago.");
+        }
     }
 }

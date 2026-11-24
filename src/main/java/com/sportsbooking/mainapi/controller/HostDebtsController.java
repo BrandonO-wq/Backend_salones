@@ -63,7 +63,7 @@ public class HostDebtsController {
     }
 
     @GetMapping("/registered-hosts")
-    @PreAuthorize("hasAnyRole('ROLE_CLIENT', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAnyRole( 'ROLE_ADMIN')")
     public ResponseEntity<List<RegisteredHostResponseDto>> getRegisteredHosts() {
         return ResponseEntity.ok(commissionService.getRegisteredHosts());
     }

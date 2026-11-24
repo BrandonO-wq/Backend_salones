@@ -47,6 +47,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import com.sportsbooking.mainapi.enums.AppDayOfWeek;
 import java.util.Optional;
@@ -776,6 +778,17 @@ public class VenueServiceImpl implements VenueService {
                 .filter(d -> d.getVenueId() != null)
                 .collect(Collectors.groupingBy(HostDebts::getVenueId));
 
+        Set<Integer> allSportIds = venues.stream()
+                .filter(v -> v.getIdSports() != null)
+                .flatMap(v -> Arrays.stream(v.getIdSports()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Integer, String> eventTypeNames = allSportIds.isEmpty() ? Map.of() :
+                parameterRepository.findAllById(allSportIds).stream()
+                        .filter(p -> p.getIdParam() != null && p.getChildName() != null)
+                        .collect(Collectors.toMap(ParameterEntity::getIdParam, ParameterEntity::getChildName, (a, b) -> a));
+
         return venues.stream()
                 .map(venue -> {
                     UUID venueId = venue.getId();
@@ -807,6 +820,19 @@ public class VenueServiceImpl implements VenueService {
                     Double latitude = venue.getLocation() != null ? venue.getLocation().getY() : null;
                     Double longitude = venue.getLocation() != null ? venue.getLocation().getX() : null;
 
+                    String statusStr = (venue.getStatus() == VenueStatus.ACTIVE) ? "ACTIVO" : "INACTIVO";
+                    boolean isActive = (venue.getStatus() == VenueStatus.ACTIVE);
+
+                    List<String> eventTypes = List.of();
+                    if (venue.getIdSports() != null && venue.getIdSports().length > 0) {
+                        eventTypes = Arrays.stream(venue.getIdSports())
+                                .filter(Objects::nonNull)
+                                .map(eventTypeNames::get)
+                                .filter(Objects::nonNull)
+                                .collect(Collectors.toList());
+                    }
+                    String eventType = eventTypes.isEmpty() ? null : String.join(", ", eventTypes);
+
                     return VenueBookingReportDto.builder()
                             .id(venueId)
                             .name(venue.getName())
@@ -821,6 +847,10 @@ public class VenueServiceImpl implements VenueService {
                             .ubigeo(venue.getUbigeo())
                             .reviewsCount(reviewsCount)
                             .reviewsAverage(reviewsAverage)
+                            .status(statusStr)
+                            .isActive(isActive)
+                            .eventType(eventType)
+                            .eventTypes(eventTypes)
                             .build();
                 })
                 .collect(Collectors.toList());

@@ -67,6 +67,11 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
      */
     Optional<UserEntity> findByEmailAndDeletedAtIsNull(String email);
 
-    @Query("SELECT u FROM UserEntity u WHERE u.id IN (SELECT DISTINCT v.hostUserId FROM VenueEntity v) ORDER BY u.createdAt DESC")
+    /**
+     * Busca todos los hosts activos (status = 1) que tengan al menos un venue registrado.
+     *
+     * @return lista de {@link UserEntity} con rol host y estado activo.
+     */
+    @Query("SELECT u FROM UserEntity u WHERE u.status = 1 AND u.id IN (SELECT DISTINCT v.hostUserId FROM VenueEntity v) ORDER BY u.createdAt DESC")
     List<UserEntity> findHosts();
 }

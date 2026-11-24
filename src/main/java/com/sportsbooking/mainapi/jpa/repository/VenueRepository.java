@@ -13,7 +13,8 @@ import java.util.UUID;
 /**
  * Repositorio JPA para la entidad {@link VenueEntity}.
  *
- * <p>CRUD simple. Para queries geoespaciales y de búsqueda usar
+ * <p>
+ * CRUD simple. Para queries geoespaciales y de búsqueda usar
  * {@code VenueMyRepository} (MyBatis).
  */
 public interface VenueRepository extends JpaRepository<VenueEntity, UUID> {
@@ -26,12 +27,21 @@ public interface VenueRepository extends JpaRepository<VenueEntity, UUID> {
      * @return lista de venues.
      */
     List<VenueEntity> findByHostUserIdAndStatus(UUID hostUserId, VenueStatus status);
+
     List<VenueEntity> findByHostUserId(UUID hostUserId);
 
     long countByHostUserId(UUID hostUserId);
 
+    /**
+     * Retorna el total de salones y propietarios únicos,
+     * considerando únicamente hosts con status = 1 (ACTIVO).
+     *
+     * @return {@link VenueStatsResponseDto} con totales filtrados por host activo.
+     */
     @Query("SELECT new com.sportsbooking.mainapi.dto.venue.response.VenueStatsResponseDto(" +
-           "COUNT(v), COUNT(DISTINCT v.hostUserId)) " +
-           "FROM VenueEntity v")
+            "COUNT(v), COUNT(DISTINCT v.hostUserId)) " +
+            "FROM VenueEntity v " +
+            "JOIN UserEntity u ON u.id = v.hostUserId " +
+            "WHERE u.status = 1")
     VenueStatsResponseDto getVenueStats();
 }
